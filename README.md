@@ -4,7 +4,7 @@
 
 ### Self-Hosted Cloud Cost Management Dashboard
 
-**Multi-cloud ? AI-powered ? Zero lock-in ? Open source**
+**Multi-cloud · AI-powered · Zero lock-in · Open source**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white)](https://nextjs.org)
@@ -12,9 +12,9 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
 [![Groq](https://img.shields.io/badge/AI-Groq_Llama_3.3-orange)](https://groq.com)
 
-*Track, analyse, and optimise cloud spend across AWS, GCP, Azure, and OCI ? from a single self-hosted dashboard.*
+*Track, analyse, and optimise cloud spend across AWS, GCP, Azure, and OCI — from a single self-hosted dashboard.*
 
-[**Live Demo**](https://vyncost.vynops.io) ? [**Docs**](https://vynops.io/docs) ? [**GitHub**](https://github.com/vynops/VynCost) ? [**Part of VynOps**](https://github.com/vynops)
+[**Live Demo**](https://vyncost.vynops.io) · [**Docs**](https://vynops.io/docs) · [**GitHub**](https://github.com/vynops/VynCost) · [**Part of VynOps**](https://github.com/vynops)
 
 </div>
 
@@ -22,11 +22,11 @@
 
 ## Overview
 
-VynCost gives engineering and FinOps teams a **single pane of glass** for cloud cost visibility ? without sending your billing data to a third-party SaaS product.
+VynCost gives engineering and FinOps teams a **single pane of glass** for cloud cost visibility — without sending your billing data to a third-party SaaS product.
 
 - **Multi-cloud:** AWS, GCP, Azure, and OCI in one view. Connect multiple accounts per provider.
-- **AI Copilot:** Ask questions in plain English ? *"Why did my costs spike this week?"*, *"What can I cut today?"* Powered by Groq Llama 3.3 70B with full cost context injected automatically.
-- **Actionable recommendations:** Rightsizing, reserved instance coverage, idle resource cleanup ? each with the exact CLI command to act immediately.
+- **AI Copilot:** Ask questions in plain English — *"Why did my costs spike this week?"*, *"What can I cut today?"* Powered by Groq Llama 3.3 70B with full cost context injected automatically.
+- **Actionable recommendations:** Rightsizing, reserved instance coverage, idle resource cleanup — each with the exact CLI command to act immediately.
 - **Demo mode:** Runs fully offline with a realistic simulation engine. No cloud credentials required to evaluate.
 - **Zero external dependencies:** No database, no Redis, no message queue. Plain JSON files. Runs on a $5 VPS.
 
@@ -34,45 +34,45 @@ VynCost gives engineering and FinOps teams a **single pane of glass** for cloud 
 
 ## Features
 
-### ?? Cost Overview
-Real-time month-to-date spend, end-of-month projection, daily cost trend chart, provider breakdown, and top service drivers ? refreshed every 30 seconds via SWR polling.
+### 💰 Cost Overview
+Real-time month-to-date spend, end-of-month projection, daily cost trend chart, provider breakdown, and top service drivers — refreshed every 30 seconds via SWR polling.
 
-### ?? Cost Explorer
+### 🔍 Cost Explorer
 Drill down into spend by service, region, account, or provider. Filter by date range (7 / 30 / 90 days). Export any view to CSV in one click.
 
-### ?? Recommendations
-Rightsizing suggestions, purchase advisors, and optimisation opportunities ? each with:
+### 💡 Recommendations
+Rightsizing suggestions, purchase advisors, and optimisation opportunities — each with:
 - Current vs. optimised resource spec
 - Monthly and annual savings estimate
 - Risk level (Low / Medium / High) and confidence score
 - Copy-paste CLI command to apply immediately (AWS CLI, gcloud, az CLI)
 
-### ??? Waste Detection
+### 🗑️ Waste Detection
 Automatically surfaces idle and orphaned resources: unattached EBS volumes, unused Elastic IPs, stopped instances, orphaned snapshots, zero-target load balancers. Shows idle-day count and monthly waste cost.
 
-### ?? Anomaly Detection
+### 📊 Anomaly Detection
 Statistical anomaly detection across all providers. Severity classification (Critical / High / Medium / Low), per-provider filtering, and one-click acknowledge workflow.
 
-### ?? Forecasting
+### 📈 Forecasting
 30 / 60 / 90-day spend forecasting with confidence bands. Visual area chart plus daily granular forecast table. Export to CSV.
 
-### ?? RI / Savings Plan Coverage
+### 🔒 RI / Savings Plan Coverage
 Reserved Instance and Savings Plan coverage analysis. Usage bars, expiry alerts, waste highlights. Understand coverage gaps before your next commitment renewal.
 
-### ?? Budget Management
+### 💼 Budget Management
 Create budgets scoped to provider, account, service, or team. Real-time progress bars, configurable alert thresholds, Slack webhook notifications.
 
-### ??? Team Allocation
+### 🏷️ Team Allocation
 Cost allocation by team with tag coverage statistics. Track which teams are properly tagging resources and what it costs.
 
-### ?? AI Copilot
+### 🤖 AI Copilot
 Conversational FinOps assistant with live cost context:
 - Answers questions about spend, anomalies, recommendations, and waste
 - Configurable Groq API key and model selection from the Settings UI
 - Token usage tracking (requests / prompt tokens / completion tokens) per day
-- Demo mode with intelligent pre-loaded responses ? no API key required to evaluate
+- Demo mode with intelligent pre-loaded responses — no API key required to evaluate
 
-### ?? Team Management (RBAC)
+### 👥 Team Management (RBAC)
 Multi-user support with role-based access control:
 
 | Role | Capabilities |
@@ -81,7 +81,7 @@ Multi-user support with role-based access control:
 | **Editor** | View + acknowledge anomalies, apply recommendations |
 | **Viewer** | Read-only access to all dashboards |
 
-### ?? Settings
+### ⚙️ Settings
 - Connect cloud accounts (AWS, GCP, Azure, OCI) with credential testing
 - Configure AI Copilot model and API key
 - Set alert thresholds, Slack webhooks, default date ranges
@@ -98,7 +98,7 @@ Multi-user support with role-based access control:
 | Styling | [Tailwind CSS v4](https://tailwindcss.com) | Utility-first dark theme |
 | Data fetching | [SWR](https://swr.vercel.app) | Real-time polling with auto-revalidation |
 | Charts | [Recharts](https://recharts.org) | Area, bar, and pie charts |
-| AI | [Groq SDK](https://groq.com) | Llama 3.3 70B ? configurable model |
+| AI | [Groq SDK](https://groq.com) | Llama 3.3 70B — configurable model |
 | Auth | [jose](https://github.com/panva/jose) | JWT session cookies (HS256, 7-day expiry) |
 | Storage | JSON files | Zero-dependency local persistence |
 
@@ -111,7 +111,7 @@ No database. No ORM. No Redis. No external services required (beyond an optional
 ### Prerequisites
 
 - **Node.js 18+**
-- Cloud provider credentials ? or run in **demo mode** with no credentials at all
+- Cloud provider credentials — or run in **demo mode** with no credentials at all
 
 ### 1. Clone and install
 
@@ -142,7 +142,7 @@ VYNCOST_ADMIN_PASSWORD=your-secure-password
 # Or configure in Settings UI after login
 GROQ_API_KEY=
 
-# Optional: port override
+# Optional: port override (default 3020 in production)
 # PORT=3020
 ```
 
@@ -150,20 +150,20 @@ GROQ_API_KEY=
 
 ```bash
 npm run dev
-# Open: http://localhost:3000
+# Open: http://localhost:3020
 ```
 
 ### 4. Login and explore
 
 Default login uses the `VYNCOST_ADMIN_EMAIL` / `VYNCOST_ADMIN_PASSWORD` you set.
-No cloud accounts needed ? demo mode activates automatically with realistic simulated data.
+No cloud accounts needed — demo mode activates automatically with realistic simulated data.
 
 ### 5. Connect your first cloud account
 
-1. Go to **Settings ? Cloud Accounts ? Add Account**
+1. Go to **Settings → Cloud Accounts → Add Account**
 2. Select your provider (AWS / GCP / Azure / OCI)
 3. Fill in the provider credential form
-4. Click **Test Connection** ? validates credentials before saving
+4. Click **Test Connection** — validates credentials before saving
 5. Click **Save Account**
 
 Real cost data appears within one polling cycle (30 seconds).
@@ -181,7 +181,7 @@ VynCost runs fully without any cloud accounts. The simulation engine generates:
 - Anomaly events, 90-day forecasts, and RI coverage data
 - AI Copilot with contextual FinOps responses (no API key needed)
 
-Demo mode is **automatic** ? no configuration. Connect a real account to switch that provider to live data.
+Demo mode is **automatic** — no configuration. Connect a real account to switch that provider to live data.
 
 ---
 
@@ -212,7 +212,7 @@ VynCost needs read-only access to AWS Cost Explorer. Create a dedicated IAM user
 }
 ```
 
-**Required fields:** Account ID ? Access Key ID (`AKIA...`) ? Secret Access Key ? Default Region
+**Required fields:** Account ID · Access Key ID (`AKIA...`) · Secret Access Key · Default Region
 
 ---
 
@@ -220,7 +220,7 @@ VynCost needs read-only access to AWS Cost Explorer. Create a dedicated IAM user
 
 Create a **Service Account** with the `Billing Account Viewer` and `Cloud Asset Viewer` roles. Download the JSON key file.
 
-**Required fields:** Project ID ? Service Account Email ? Service Account JSON
+**Required fields:** Project ID · Service Account Email · Service Account JSON
 
 ---
 
@@ -228,7 +228,7 @@ Create a **Service Account** with the `Billing Account Viewer` and `Cloud Asset 
 
 Create an **App Registration** (Service Principal) in Azure AD. Assign the `Cost Management Reader` role at the subscription scope.
 
-**Required fields:** Subscription ID ? Tenant ID ? Client ID ? Client Secret
+**Required fields:** Subscription ID · Tenant ID · Client ID · Client Secret
 
 ---
 
@@ -236,15 +236,15 @@ Create an **App Registration** (Service Principal) in Azure AD. Assign the `Cost
 
 Create an API signing key pair and add the public key to your OCI user profile. Grant `read` access to Cost & Usage reports.
 
-**Required fields:** Tenancy OCID ? User OCID ? Fingerprint ? Private Key (PEM) ? Region
+**Required fields:** Tenancy OCID · User OCID · Fingerprint · Private Key (PEM) · Region
 
 ---
 
 ## AI Copilot
 
-The AI Copilot is powered by [Groq](https://groq.com) ? ultra-fast Llama 3.3 inference.
+The AI Copilot is powered by [Groq](https://groq.com) — ultra-fast Llama 3.3 inference.
 
-**Configuration** (Settings ? AI Copilot):
+**Configuration** (Settings → AI Copilot):
 
 | Setting | Description |
 |---|---|
@@ -276,12 +276,12 @@ All endpoints require authentication (session cookie). Base path: `/api`
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/overview` | MTD spend, top drivers, daily chart, alerts |
-| `GET` | `/api/explorer` | Breakdown `?groupBy=service\|provider\|region\|account&days=7\|30\|90` |
+| `GET` | `/api/explorer` | Breakdown `?groupBy=service|provider|region|account&days=7|30|90` |
 | `GET` | `/api/recommendations` | Rightsizing suggestions `?category=&provider=` |
 | `GET` | `/api/waste` | Idle/orphaned resources `?provider=` |
 | `GET` | `/api/allocation` | Team cost allocation + tag coverage |
 | `GET` | `/api/anomalies` | Detected anomalies with severity |
-| `GET` | `/api/forecast` | Spend forecast `?horizon=30\|60\|90` |
+| `GET` | `/api/forecast` | Spend forecast `?horizon=30|60|90` |
 | `GET` | `/api/commitments` | RI/Savings Plan coverage data |
 
 ### Budgets
@@ -302,8 +302,8 @@ All endpoints require authentication (session cookie). Base path: `/api`
 | `PATCH` | `/api/users/:id` | Update user name / role / password |
 | `DELETE` | `/api/users/:id` | Remove user (admin only) |
 | `GET` | `/api/auth/me` | Current session `{ id, email, name, role }` |
-| `POST` | `/api/auth/login` | Login `{ email, password }` ? sets session cookie |
-| `POST` | `/api/auth/logout` | Logout ? clears session cookie |
+| `POST` | `/api/auth/login` | Login `{ email, password }` → sets session cookie |
+| `POST` | `/api/auth/logout` | Logout → clears session cookie |
 
 ### AI & Settings
 
@@ -322,11 +322,11 @@ VynCost uses plain JSON files in `data/`. No database required.
 
 ```
 data/
-??? accounts.json       # Cloud accounts + credentials (secrets stored, never sent to browser)
-??? budgets.json        # Budget definitions and alert thresholds
-??? settings.json       # Dashboard config + AI Copilot key/model
-??? users.json          # User accounts with PBKDF2-hashed passwords
-??? copilot-usage.json  # Daily AI token usage counters
+├── accounts.json       # Cloud accounts + credentials (secrets stored, never sent to browser)
+├── budgets.json        # Budget definitions and alert thresholds
+├── settings.json       # Dashboard config + AI Copilot key/model
+├── users.json          # User accounts with PBKDF2-hashed passwords
+└── copilot-usage.json  # Daily AI token usage counters
 ```
 
 **`data/` is in `.gitignore` and is never committed.** All credentials and secrets stay on your machine.
@@ -335,7 +335,7 @@ To back up: `cp -r data/ data-backup/`. To migrate: copy `data/` to the new mach
 
 ### Credential Security
 
-Cloud credentials (AWS secret keys, GCP service account JSON, Azure client secrets, OCI private keys) are stored in `data/accounts.json` **server-side only**. The `sanitize()` function in `lib/account-store.ts` strips all secret fields before every API response ? credentials are write-only from the browser's perspective.
+Cloud credentials (AWS secret keys, GCP service account JSON, Azure client secrets, OCI private keys) are stored in `data/accounts.json` **server-side only**. The `sanitize()` function in `lib/account-store.ts` strips all secret fields before every API response — credentials are write-only from the browser's perspective.
 
 ---
 
@@ -347,7 +347,7 @@ Cloud credentials (AWS secret keys, GCP service account JSON, Azure client secre
 | `VYNCOST_ADMIN_EMAIL` | **Yes** | Bootstrap admin email |
 | `VYNCOST_ADMIN_PASSWORD` | **Yes** | Bootstrap admin password |
 | `GROQ_API_KEY` | No | Groq API key. Can also be set via Settings UI. Demo mode when empty. |
-| `PORT` | No | HTTP port (default: `3000` dev / `3020` production) |
+| `PORT` | No | HTTP port (default: `3020`) |
 
 ---
 
@@ -400,37 +400,37 @@ CMD ["npm", "start"]
 
 ```
 VynCost/
-??? app/
-?   ??? (dashboard)/          # All authenticated dashboard pages
-?   ?   ??? overview/         # MTD spend + daily chart
-?   ?   ??? explorer/         # Cost drill-down with filters
-?   ?   ??? recommendations/  # Rightsizing + optimisation
-?   ?   ??? waste/            # Idle resource cleanup
-?   ?   ??? anomalies/        # Anomaly detection
-?   ?   ??? forecast/         # 30/60/90-day forecasting
-?   ?   ??? commitments/      # RI / Savings Plan coverage
-?   ?   ??? budgets/          # Budget management
-?   ?   ??? allocation/       # Team cost allocation
-?   ?   ??? copilot/          # AI chat interface
-?   ?   ??? team/             # User management (RBAC)
-?   ?   ??? settings/         # App + AI configuration
-?   ??? api/                  # All API route handlers
-??? lib/
-?   ??? simulation/           # Deterministic mock data engine
-?   ?   ??? index.ts          # Unified router
-?   ?   ??? seed.ts           # Seeded PRNG
-?   ?   ??? vendors/          # Per-provider simulators (aws/gcp/azure/oci)
-?   ??? auth.ts               # JWT session management + RBAC helpers
-?   ??? user-store.ts         # Multi-user store with PBKDF2 hashing
-?   ??? account-store.ts      # Cloud account CRUD + credential sanitisation
-?   ??? settings-store.ts     # App settings persistence
-?   ??? copilot-usage.ts      # Daily AI token usage tracking
-?   ??? utils.ts              # CSV export + shared utilities
-??? components/
-?   ??? layout/               # Sidebar, Header, DashboardLayout
-?   ??? ui/                   # Shared UI components
-??? middleware.ts             # Auth guard ? redirects unauthenticated requests
-??? data/                     # Runtime data (gitignored)
+├── app/
+│   ├── (dashboard)/          # All authenticated dashboard pages
+│   │   ├── overview/         # MTD spend + daily chart
+│   │   ├── explorer/         # Cost drill-down with filters
+│   │   ├── recommendations/  # Rightsizing + optimisation
+│   │   ├── waste/            # Idle resource cleanup
+│   │   ├── anomalies/        # Anomaly detection
+│   │   ├── forecast/         # 30/60/90-day forecasting
+│   │   ├── commitments/      # RI / Savings Plan coverage
+│   │   ├── budgets/          # Budget management
+│   │   ├── allocation/       # Team cost allocation
+│   │   ├── copilot/          # AI chat interface
+│   │   ├── team/             # User management (RBAC)
+│   │   └── settings/         # App + AI configuration
+│   └── api/                  # All API route handlers
+├── lib/
+│   ├── simulation/           # Deterministic mock data engine
+│   │   ├── index.ts          # Unified router
+│   │   ├── seed.ts           # Seeded PRNG
+│   │   └── vendors/          # Per-provider simulators (aws/gcp/azure/oci)
+│   ├── auth.ts               # JWT session management + RBAC helpers
+│   ├── user-store.ts         # Multi-user store with PBKDF2 hashing
+│   ├── account-store.ts      # Cloud account CRUD + credential sanitisation
+│   ├── settings-store.ts     # App settings persistence
+│   ├── copilot-usage.ts      # Daily AI token usage tracking
+│   └── utils.ts              # CSV export + shared utilities
+├── components/
+│   ├── layout/               # Sidebar, Header, DashboardLayout
+│   └── ui/                   # Shared UI components
+├── middleware.ts              # Auth guard — redirects unauthenticated requests
+└── data/                     # Runtime data (gitignored)
 ```
 
 ---
@@ -438,9 +438,9 @@ VynCost/
 ## Security Notes
 
 - **Cloud credentials** are stored in `data/accounts.json` server-side. Secure the host VynCost runs on.
-- **Credential sanitisation** ? `sanitize()` in `lib/account-store.ts` strips all secret fields before any API response. Credentials are write-only from the browser.
+- **Credential sanitisation** — `sanitize()` in `lib/account-store.ts` strips all secret fields before any API response. Credentials are write-only from the browser.
 - **`VYNCOST_SECRET`** must be a random 32+ byte value in production. Do not reuse across deployments.
-- **Password hashing** ? user passwords use PBKDF2 (100,000 iterations, SHA-256) via Node.js built-in `crypto`. No external bcrypt dependency.
+- **Password hashing** — user passwords use PBKDF2 (100,000 iterations, SHA-256) via Node.js built-in `crypto`. No external bcrypt dependency.
 - All API routes are protected by JWT session middleware. No anonymous API access.
 - Use HTTPS (nginx + Let's Encrypt) in production.
 - For AWS, use a dedicated IAM user with **read-only billing permissions**. Never use root credentials or admin keys.
@@ -450,20 +450,20 @@ VynCost/
 
 ## Roadmap
 
-### v0.2 ? Real Cloud Integration
+### v0.2 — Real Cloud Integration
 - [ ] AWS Cost Explorer API integration
 - [ ] GCP Billing Export / BigQuery integration
 - [ ] Azure Cost Management API integration
 - [ ] OCI Usage Reports API integration
 - [ ] Scheduled background data sync
 
-### v0.3 ? Alerting & Automation
+### v0.3 — Alerting & Automation
 - [ ] Slack / webhook budget threshold alerts
 - [ ] Email alerts via SMTP
 - [ ] Alert history log with acknowledgement
 - [ ] Auto-apply low-risk recommendations (with approval flow)
 
-### v0.4 ? Advanced FinOps
+### v0.4 — Advanced FinOps
 - [ ] Custom tag-based allocation rules (YAML config)
 - [ ] CSV / PDF cost report export (scheduled)
 - [ ] Terraform cost estimation (pre-apply plan diffing)
@@ -478,7 +478,7 @@ VynCost/
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feat/your-feature`
 3. Make your changes
-4. Run `npx tsc --noEmit` ? must pass with zero errors
+4. Run `npx tsc --noEmit` — must pass with zero errors
 5. Commit: `git commit -m "feat: describe your change"`
 6. Push and open a pull request
 
@@ -486,7 +486,7 @@ VynCost/
 
 ## License
 
-MIT ? see [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE)
 
 ---
 
@@ -498,7 +498,7 @@ VynCost is one component of the [VynOps](https://github.com/vynops) open-source 
 |---|---|---|
 | [VynOps](https://github.com/vynops/VynOps) | Active | AI-native Kubernetes operations dashboard |
 | [VynAI](https://github.com/vynops/VynAI) | Active | Ollama fleet management & GPU monitoring |
-| [VynCost](https://github.com/vynops/VynCost) | **Active** | Cloud cost management ? *this project* |
+| [VynCost](https://github.com/vynops/VynCost) | **Active** | Cloud cost management ← *this project* |
 | [VynDB](https://github.com/vynops/VynDB) | Planned | Database operations & query management |
 | [VynDC](https://github.com/vynops/VynDC) | Planned | Container & Docker management |
 | [VynCICD](https://github.com/vynops/VynCICD) | Planned | CI/CD pipeline management |
@@ -507,6 +507,6 @@ VynCost is one component of the [VynOps](https://github.com/vynops) open-source 
 
 <div align="center">
 
-**[vynops.io](https://vynops.io)** ? MIT License ? Open Source
+**[vynops.io](https://vynops.io)** · MIT License · Open Source
 
 </div>
