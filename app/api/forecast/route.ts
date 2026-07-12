@@ -5,7 +5,7 @@ import { simulatedForecast } from '@/lib/simulation'
 export async function GET(req: NextRequest) {
   const horizon = parseInt(req.nextUrl.searchParams.get('horizon') || '90', 10)
   const accounts = listAccounts()
-  const data = simulatedForecast(
+  const data = await simulatedForecast(
     accounts.map(a => ({ id: a.id, name: a.name, provider: a.provider })),
     horizon
   )

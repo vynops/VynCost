@@ -6,12 +6,14 @@ import type { CloudProvider } from '@/lib/mock-data'
 import { loadSettings } from '@/lib/settings-store'
 import { recordUsage } from '@/lib/copilot-usage'
 
-function buildContext(): string {
+async function buildContext(): Promise<string> {
   const accounts = listAccounts()
   const acctArg = accounts.map(a => ({ id: a.id, name: a.name, provider: a.provider as CloudProvider }))
-  const overview = simulatedOverview(acctArg)
-  const recs = simulatedRecommendations(acctArg)
-  const waste = simulatedWaste(acctArg)
+  const [overview, recs, waste] = await Promise.all([
+    simulatedOverview(acctArg),
+    simulatedRecommendations(acctArg),
+    simulatedWaste(acctArg),
+  ])
 
   const savingsTotal = recs.reduce((s, r) => s + r.savingsPerMonth, 0)
   const wasteTotal = waste.reduce((s, w) => s + w.costPerDay * 30, 0)
@@ -62,7 +64,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reply })
   }
 
-  const context = buildContext()
+  const context = await buildContext()
   const client = new Groq({ apiKey })
 
   const completion = await client.chat.completions.create({

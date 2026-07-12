@@ -4,6 +4,7 @@ import './globals.css'
 export const metadata: Metadata = {
   title: { default: 'VynCost · VynOps Suite', template: '%s | VynCost' },
   description: 'AI-Powered Cloud Cost Optimizer',
+  icons: { icon: '/favicon-circle.png', shortcut: '/favicon-circle.png', apple: '/favicon-circle.png' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

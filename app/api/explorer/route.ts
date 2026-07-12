@@ -6,7 +6,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const groupBy = searchParams.get('groupBy') || 'service'
   const accounts = listAccounts()
-  const data = simulatedExplorer(
+  const data = await simulatedExplorer(
     accounts.map(a => ({ id: a.id, name: a.name, provider: a.provider })),
     groupBy
   )

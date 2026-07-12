@@ -67,6 +67,22 @@ export interface AllocationRow {
   services: { service: string; amountUsd: number }[]
 }
 
+export interface AnomalyEvent {
+  id: string
+  date: string
+  service: string
+  provider: CloudProvider
+  accountName: string
+  accountId: string
+  region: string
+  baseline: number
+  actual: number
+  spikePercent: number
+  severity: 'low' | 'medium' | 'high'
+  status: 'open' | 'acknowledged'
+  description: string
+}
+
 export interface OverviewData {
   totalMtd: number
   projectedEom: number
@@ -100,6 +116,26 @@ function buildDailyTrend(base: number): CostPoint[] {
     pts.push({ date: daysAgo(i), amountUsd: parseFloat((base * (1 + noise) * weekendDip).toFixed(2)) })
   }
   return pts
+}
+
+export interface RiCoverageItem {
+  id: string
+  provider: CloudProvider
+  accountName: string
+  accountId: string
+  commitmentType: string
+  service: string
+  region: string
+  term: '1yr' | '3yr'
+  paymentOption: 'No Upfront' | 'Partial Upfront' | 'All Upfront'
+  hourlyCost: number
+  unusedHours: number
+  totalHours: number
+  coveragePct: number
+  monthlyCost: number
+  wastedMonthly: number
+  expiresAt: string
+  status: 'active' | 'expiring_soon' | 'expired'
 }
 
 // ── Mock for a single account ─────────────────────────────────────────────────

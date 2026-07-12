@@ -22,10 +22,23 @@ function StatusBadge({ status }: { status: CloudAccount['status'] }) {
   return <span className="flex items-center gap-1 text-yellow-400 text-[10px] font-bold"><Clock size={10} /> Pending</span>
 }
 
-function AddAccountModal({ onClose, onAdd }: { onClose: () => void; onAdd: (data: Partial<CloudAccount>) => void }) {
-  const [step, setStep] = useState<'pick' | 'form'>('pick')
-  const [provider, setProvider] = useState<CloudProvider>('aws')
-  const [form, setForm] = useState<Record<string, string>>({ name: '', currency: 'USD' })
+function AccountFormModal({
+  onClose,
+  onSave,
+  existing,
+}: {
+  onClose: () => void
+  onSave: (data: Partial<CloudAccount>) => void
+  existing?: Partial<CloudAccount>
+}) {
+  const isEdit = !!existing
+  const [step, setStep] = useState<'pick' | 'form'>(isEdit ? 'form' : 'pick')
+  const [provider, setProvider] = useState<CloudProvider>(existing?.provider ?? 'aws')
+  const [form, setForm] = useState<Record<string, string>>(
+    isEdit
+      ? Object.fromEntries(Object.entries(existing!).map(([k, v]) => [k, String(v ?? '')]))
+      : { name: '', currency: 'USD' }
+  )
   const [showSecret, setShowSecret] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; message?: string; error?: string } | null>(null)
@@ -46,7 +59,8 @@ function AddAccountModal({ onClose, onAdd }: { onClose: () => void; onAdd: (data
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
-    onAdd({ provider, ...form } as Partial<CloudAccount>)
+    const status = testResult?.ok ? 'active' : (existing?.status ?? 'pending')
+    onSave({ provider, ...form, status } as Partial<CloudAccount>)
     onClose()
   }
 
@@ -98,6 +112,7 @@ function AddAccountModal({ onClose, onAdd }: { onClose: () => void; onAdd: (data
       { label: 'Tenancy OCID', key: 'ociTenancyOcid', placeholder: 'ocid1.tenancy.oc1...' },
       { label: 'User OCID', key: 'ociUserOcid', placeholder: 'ocid1.user.oc1...' },
       { label: 'Fingerprint', key: 'ociFingerprint', placeholder: 'xx:xx:xx:...' },
+      { label: 'Private Key (PEM)', key: 'ociPrivateKey', placeholder: '-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----', secret: true },
       { label: 'Region', key: 'ociRegion', placeholder: 'eu-frankfurt-1' },
     ],
   }
@@ -107,9 +122,9 @@ function AddAccountModal({ onClose, onAdd }: { onClose: () => void; onAdd: (data
       <div className="bg-[#111827] border border-slate-700 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <button onClick={() => setStep('pick')} className="text-slate-500 hover:text-white text-xs">← Back</button>
-            <span className="text-xs text-slate-600">/</span>
-            <h2 className="text-sm font-bold text-white">{PROVIDER_LOGOS[provider]} {providerLabel(provider)}</h2>
+            {!isEdit && <button onClick={() => setStep('pick')} className="text-slate-500 hover:text-white text-xs">← Back</button>}
+            {!isEdit && <span className="text-xs text-slate-600">/</span>}
+            <h2 className="text-sm font-bold text-white">{PROVIDER_LOGOS[provider]} {isEdit ? `Edit ${providerLabel(provider)} Account` : providerLabel(provider)}</h2>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={16} /></button>
         </div>
@@ -118,10 +133,10 @@ function AddAccountModal({ onClose, onAdd }: { onClose: () => void; onAdd: (data
             <div key={f.key}>
               <label className="text-xs text-slate-400 font-medium block mb-1">{f.label}</label>
               <div className="relative">
-                {f.key === 'gcpServiceAccountJson' ? (
-                  <textarea rows={3} value={form[f.key] || ''} onChange={e => set(f.key, e.target.value)}
+                {(f.key === 'gcpServiceAccountJson' || f.key === 'ociPrivateKey') ? (
+                  <textarea rows={f.key === 'ociPrivateKey' ? 5 : 3} value={form[f.key] || ''} onChange={e => set(f.key, e.target.value)}
                     placeholder={f.placeholder}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-orange-500/60 resize-none" />
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-orange-500/60 resize-y" />
                 ) : (
                   <input type={f.secret && !showSecret ? 'password' : 'text'}
                     value={form[f.key] || ''} onChange={e => set(f.key, e.target.value)}
@@ -155,7 +170,7 @@ function AddAccountModal({ onClose, onAdd }: { onClose: () => void; onAdd: (data
             </button>
             <button type="submit"
               className="flex-1 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-white font-bold text-xs transition-colors">
-              Save Account
+              {isEdit ? 'Update Account' : 'Save Account'}
             </button>
           </div>
         </form>
@@ -174,6 +189,7 @@ const GROQ_MODELS = [
 
 export default function SettingsPage() {
   const [showAddAccount, setShowAddAccount] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<Partial<CloudAccount> | null>(null)
   const [savingSettings, setSavingSettings] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showGroqKey, setShowGroqKey] = useState(false)
@@ -197,6 +213,12 @@ export default function SettingsPage() {
 
   async function addAccount(data: Partial<CloudAccount>) {
     await fetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+    mutateAccounts()
+  }
+
+  async function editAccount(data: Partial<CloudAccount>) {
+    if (!data.id) return
+    await fetch(`/api/accounts/${data.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
     mutateAccounts()
   }
 
@@ -282,9 +304,15 @@ export default function SettingsPage() {
                             {p === 'aws' && a.awsAccountId && `Account: ${a.awsAccountId}`}
                             {p === 'gcp' && (a as Partial<CloudAccount>).gcpProjectId && `Project: ${(a as Partial<CloudAccount>).gcpProjectId}`}
                             {p === 'azure' && (a as Partial<CloudAccount>).azureSubscriptionId && `Sub: ${(a as Partial<CloudAccount>).azureSubscriptionId?.slice(0, 8)}...`}
+                            {p === 'oci' && (a as Partial<CloudAccount>).ociTenancyOcid && `Tenancy: ...${(a as Partial<CloudAccount>).ociTenancyOcid!.slice(-12)}`}
                           </div>
                         </div>
                         <StatusBadge status={a.status || 'pending'} />
+                        <button onClick={() => setEditingAccount(a)}
+                          title="Edit account"
+                          className="p-1.5 rounded-lg text-slate-600 hover:text-blue-400 hover:bg-blue-500/10 transition-colors">
+                          <Pencil size={13} />
+                        </button>
                         <button onClick={() => a.id && deleteAccount(a.id)}
                           className="p-1.5 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors">
                           <Trash2 size={13} />
@@ -430,7 +458,19 @@ export default function SettingsPage() {
         </section>
       )}
 
-      {showAddAccount && <AddAccountModal onClose={() => setShowAddAccount(false)} onAdd={addAccount} />}
+      {showAddAccount && (
+        <AccountFormModal
+          onClose={() => setShowAddAccount(false)}
+          onSave={data => { setShowAddAccount(false); addAccount(data) }}
+        />
+      )}
+      {editingAccount && (
+        <AccountFormModal
+          existing={editingAccount}
+          onClose={() => setEditingAccount(null)}
+          onSave={data => { setEditingAccount(null); editAccount(data) }}
+        />
+      )}
     </div>
   )
 }

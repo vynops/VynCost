@@ -8,6 +8,6 @@ export async function GET(req: NextRequest) {
   const provider = searchParams.get('provider') as CloudProvider | null
   const accounts = listAccounts()
   const accts = accounts.map(a => ({ id: a.id, name: a.name, provider: a.provider }))
-  const items = simulatedWaste(accts, provider ?? undefined)
+  const items = await simulatedWaste(accts, provider ?? undefined)
   return NextResponse.json(items)
 }

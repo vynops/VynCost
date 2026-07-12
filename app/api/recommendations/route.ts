@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const provider  = searchParams.get('provider') as CloudProvider | null
   const accountId = searchParams.get('accountId') ?? undefined
   const accounts  = listAccounts()
-  let recs = simulatedRecommendations(
+  let recs = await simulatedRecommendations(
     accounts.map(a => ({ id: a.id, name: a.name, provider: a.provider })),
     accountId
   )

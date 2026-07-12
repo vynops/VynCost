@@ -63,14 +63,22 @@ export default function OverviewPage() {
     <div className="space-y-6">
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard label="Month-to-Date Spend" value={fmtUsd(data.totalMtd, true)}
-          sub={`Projected: ${fmtUsd(data.projectedEom, true)} EOM`} icon={DollarSign} color="orange" />
-        <StatCard label="Savings Found" value={fmtUsd(data.savingsFound, true)}
-          sub={`${fmtUsd(data.savingsApplied, true)} already applied`} icon={TrendingDown} color="green" />
-        <StatCard label="Waste Detected" value={`${data.wasteCount} resources`}
-          sub="Idle or orphaned" icon={Trash2} color="red" />
-        <StatCard label="Connected Accounts" value={`${data.accountCount}`}
-          sub="AWS · GCP · Azure" icon={Zap} color="blue" />
+        <Link href="/explorer" className="block hover:scale-[1.02] transition-transform">
+          <StatCard label="Month-to-Date Spend" value={fmtUsd(data.totalMtd, true)}
+            sub={`Projected: ${fmtUsd(data.projectedEom, true)} EOM`} icon={DollarSign} color="orange" />
+        </Link>
+        <Link href="/recommendations" className="block hover:scale-[1.02] transition-transform">
+          <StatCard label="Savings Found" value={fmtUsd(data.savingsFound, true)}
+            sub={`${fmtUsd(data.savingsApplied, true)} already applied`} icon={TrendingDown} color="green" />
+        </Link>
+        <Link href="/waste" className="block hover:scale-[1.02] transition-transform">
+          <StatCard label="Waste Detected" value={`${data.wasteCount} resources`}
+            sub="Idle or orphaned" icon={Trash2} color="red" />
+        </Link>
+        <Link href="/settings" className="block hover:scale-[1.02] transition-transform">
+          <StatCard label="Connected Accounts" value={`${data.accountCount}`}
+            sub={data.byProvider.map(p => providerLabel(p.provider)).join(' · ') || 'No accounts'} icon={Zap} color="blue" />
+        </Link>
       </div>
 
       {/* Alerts */}

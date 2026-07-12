@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ociTestConnection, ociHasCredentials } from '@/lib/oci-live'
+import type { CloudAccount } from '@/lib/account-store'
 
-/** Quick credential test — real provider calls in v0.2, mock validation for now */
+/** Quick credential test — real OCI call; mock validation for AWS/GCP/Azure */
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { provider } = body
-
-  // Simulate a short connection test
-  await new Promise(r => setTimeout(r, 600))
 
   if (provider === 'aws') {
     if (!body.awsAccessKeyId || !body.awsSecretAccessKey) {
@@ -31,8 +30,12 @@ export async function POST(req: NextRequest) {
   }
 
   if (provider === 'oci') {
-    if (!body.ociTenancyOcid) return NextResponse.json({ ok: false, error: 'Tenancy OCID required' }, { status: 400 })
-    return NextResponse.json({ ok: true, message: 'OCI tenancy accepted. Cost & Usage Reports access verified on first sync.' })
+    if (!body.ociTenancyOcid || !body.ociUserOcid || !body.ociFingerprint || !body.ociPrivateKey || !body.ociRegion) {
+      return NextResponse.json({ ok: false, error: 'Tenancy OCID, User OCID, Fingerprint, Private Key, and Region are all required' }, { status: 400 })
+    }
+    const fakeAcct = body as unknown as CloudAccount
+    const result = await ociTestConnection(fakeAcct)
+    return NextResponse.json(result, { status: result.ok ? 200 : 400 })
   }
 
   return NextResponse.json({ ok: false, error: 'Unknown provider' }, { status: 400 })

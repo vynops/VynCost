@@ -7,15 +7,10 @@ import type { Budget } from '@/lib/budget-store'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-// Mock current spend per scope key
-const MOCK_SPEND: Record<string, number> = {
-  'AWS Production': 6200, 'GCP Core': 4010, 'Azure Dev': 2440,
-  'Data & Analytics': 3610, 'ML / AI': 1760, 'production': 8500, 'staging': 2100,
-}
+type BudgetWithSpend = Budget & { currentSpend: number }
 
-function spendPct(budget: Budget): number {
-  const spent = MOCK_SPEND[budget.scopeValue] ?? Math.random() * budget.amountUsd
-  return Math.min((spent / budget.amountUsd) * 100, 110)
+function spendPct(budget: BudgetWithSpend): number {
+  return Math.min((budget.currentSpend / budget.amountUsd) * 100, 110)
 }
 
 function BudgetBar({ pct, alertAt }: { pct: number; alertAt: number }) {
@@ -94,7 +89,7 @@ function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (d:
 
 export default function BudgetsPage() {
   const [showCreate, setShowCreate] = useState(false)
-  const { data: budgets = [], mutate, isLoading } = useSWR<Budget[]>('/api/budgets', fetcher)
+  const { data: budgets = [], mutate, isLoading } = useSWR<BudgetWithSpend[]>('/api/budgets', fetcher)
 
   async function createBudget(data: Omit<Budget, 'id' | 'createdAt'>) {
     await fetch('/api/budgets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
@@ -150,7 +145,7 @@ export default function BudgetsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {budgets.map(b => {
             const pct = spendPct(b)
-            const spent = (pct / 100) * b.amountUsd
+            const spent = b.currentSpend
             const status = pct >= 100 ? 'Over' : pct >= b.alertAt ? 'Alert' : 'On Track'
             return (
               <div key={b.id} className={`bg-[#111827] border rounded-2xl p-4 sm:p-5 ${

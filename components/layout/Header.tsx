@@ -2,18 +2,26 @@
 import { usePathname, useRouter } from 'next/navigation'
 import { LogOut, Menu, DollarSign, LayoutDashboard, Search, Lightbulb, Trash2, Target, PieChart, Sparkles, Settings } from 'lucide-react'
 import { useState } from 'react'
+import useSWR from 'swr'
 import Link from 'next/link'
-import { cn } from '@/lib/utils'
+import { cn, providerLabel } from '@/lib/utils'
+import type { CloudProvider } from '@/lib/account-store'
 
-const TITLES: Record<string, string> = {
-  '/overview': 'Overview',
-  '/explorer': 'Cost Explorer',
-  '/recommendations': 'Recommendations',
-  '/waste': 'Waste & Idle',
-  '/budgets': 'Budgets & Alerts',
-  '/allocation': 'Cost Allocation',
-  '/copilot': 'AI Copilot',
-  '/settings': 'Settings',
+const fetcher = (url: string) => fetch(url).then(r => r.json())
+
+const TITLES: Record<string, { title: string; subtitle: string }> = {
+  '/overview':         { title: 'Overview',         subtitle: 'Cloud spend at a glance' },
+  '/explorer':         { title: 'Cost Explorer',     subtitle: 'Drill into spending by service, account & tag' },
+  '/recommendations':  { title: 'Recommendations',  subtitle: 'AI-generated cost-saving actions' },
+  '/waste':            { title: 'Waste & Idle',      subtitle: 'Unused resources burning budget' },
+  '/budgets':          { title: 'Budgets & Alerts',  subtitle: 'Spending limits & threshold notifications' },
+  '/allocation':       { title: 'Cost Allocation',   subtitle: 'Tag-based charge-back & show-back' },
+  '/forecast':         { title: 'Forecast',          subtitle: 'Projected spend for the next 90 days' },
+  '/commitments':      { title: 'Commitments',       subtitle: 'Reserved instances & savings plans' },
+  '/anomalies':        { title: 'Anomalies',         subtitle: 'Unexpected spend spikes detected' },
+  '/copilot':          { title: 'AI Copilot',        subtitle: 'Ask anything about your cloud costs' },
+  '/team':             { title: 'Team',              subtitle: 'User management & roles' },
+  '/settings':         { title: 'Settings',          subtitle: 'API keys, model & preferences' },
 }
 
 const MOB_NAV = [
@@ -30,8 +38,21 @@ const MOB_NAV = [
 export default function Header() {
   const path = usePathname()
   const router = useRouter()
-  const title = TITLES[path] ?? 'VynCost'
+  const { title, subtitle } = TITLES[path] ?? { title: 'VynCost', subtitle: '' }
   const [menuOpen, setMenuOpen] = useState(false)
+  const { data: accounts = [] } = useSWR<{ provider: CloudProvider; name: string }[]>('/api/accounts', fetcher, { refreshInterval: 30000 })
+
+  const isLive = accounts.length > 0
+  const providers = [...new Set(accounts.map(a => a.provider))]
+  const modeLabel = isLive
+    ? providers.length === 1
+      ? `Live · ${providerLabel(providers[0])}`
+      : `Live · ${accounts.length} accounts`
+    : 'Demo Mode'
+  const modeColor = isLive
+    ? 'bg-green-500/10 border-green-500/20 text-green-400'
+    : 'bg-orange-500/10 border-orange-500/20 text-orange-400'
+  const dotColor = isLive ? 'bg-green-400' : 'bg-orange-400'
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -46,12 +67,15 @@ export default function Header() {
           <Menu size={18} />
         </button>
 
-        <h1 className="text-sm font-bold text-white flex-1">{title}</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-sm font-bold text-white leading-tight">{title}</h1>
+          {subtitle && <p className="text-[11px] text-slate-500 leading-tight mt-0.5 hidden sm:block">{subtitle}</p>}
+        </div>
 
         <div className="flex items-center gap-2">
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-500/10 border border-orange-500/20">
-            <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-            <span className="text-xs text-orange-400 font-medium">Demo Mode</span>
+          <div className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${modeColor}`}>
+            <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${dotColor}`} />
+            <span className="text-xs font-medium">{modeLabel}</span>
           </div>
           <button onClick={logout} className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors">
             <LogOut size={15} />

@@ -1,11 +1,23 @@
 ﻿/**
  * Unified simulation engine.
  * Routes per-account calls to the correct vendor simulator.
- * Drop-in replacement for mock-data.ts functions — same return types.
+ * For OCI accounts with credentials, delegates to real OCI API (lib/oci-live.ts).
  */
 
-import type { CloudProvider, ServiceCost, Recommendation, WasteItem, AllocationRow, OverviewData } from '@/lib/mock-data'
+import type { CloudProvider, ServiceCost, Recommendation, WasteItem, AllocationRow, OverviewData, AnomalyEvent, RiCoverageItem } from '@/lib/mock-data'
 import { createRng, hashSeed, seededRand } from '@/lib/simulation/seed'
+import { listAccounts } from '@/lib/account-store'
+import {
+  ociHasCredentials,
+  ociServiceCostsLive,
+  ociDailyTrendLive,
+  ociMonthlyCostLive,
+  ociAllocationLive,
+  ociAnomaliesLive,
+  ociRecommendationsLive,
+  ociWasteLive,
+  ociCommitmentsLive,
+} from '@/lib/oci-live'
 
 import { awsServiceCosts, awsDailyTrend, awsRecommendations, awsWaste, awsMonthlyCost, awsAllocation } from '@/lib/simulation/vendors/aws'
 import { gcpServiceCosts, gcpDailyTrend, gcpRecommendations, gcpWaste, gcpMonthlyCost, gcpAllocation } from '@/lib/simulation/vendors/gcp'
@@ -21,8 +33,20 @@ export const DEFAULT_ACCOUNTS: { id: string; name: string; provider: CloudProvid
   { id: 'demo-oci-infra',    name: 'OCI Infrastructure',provider: 'oci'   },
 ]
 
-// ── Per-vendor routing ────────────────────────────────────────────────────────
-function serviceCosts(acct: { id: string; name: string; provider: CloudProvider }): ServiceCost[] {
+// ── OCI live account lookup ───────────────────────────────────────────────────
+function liveOciAccount(id: string) {
+  const full = listAccounts().find(a => a.id === id)
+  return full && ociHasCredentials(full) ? full : null
+}
+
+// ── Per-vendor routing (async — OCI routes to live API when creds present) ────
+async function serviceCosts(acct: { id: string; name: string; provider: CloudProvider }): Promise<ServiceCost[]> {
+  if (acct.provider === 'oci') {
+    const live = liveOciAccount(acct.id)
+    if (live) {
+      try { return await ociServiceCostsLive(live) } catch (e) { console.error('[OCI live] serviceCosts failed:', e) }
+    }
+  }
   switch (acct.provider) {
     case 'aws':   return awsServiceCosts(acct.id, acct.name)
     case 'gcp':   return gcpServiceCosts(acct.id, acct.name)
@@ -31,7 +55,13 @@ function serviceCosts(acct: { id: string; name: string; provider: CloudProvider 
   }
 }
 
-function dailyTrend(acct: { id: string; provider: CloudProvider }) {
+async function dailyTrend(acct: { id: string; provider: CloudProvider }) {
+  if (acct.provider === 'oci') {
+    const live = liveOciAccount(acct.id)
+    if (live) {
+      try { return await ociDailyTrendLive(live) } catch (e) { console.error('[OCI live] dailyTrend failed:', e) }
+    }
+  }
   switch (acct.provider) {
     case 'aws':   return awsDailyTrend(acct.id)
     case 'gcp':   return gcpDailyTrend(acct.id)
@@ -40,7 +70,13 @@ function dailyTrend(acct: { id: string; provider: CloudProvider }) {
   }
 }
 
-function monthlyCost(acct: { id: string; provider: CloudProvider }): number {
+async function monthlyCost(acct: { id: string; provider: CloudProvider }): Promise<number> {
+  if (acct.provider === 'oci') {
+    const live = liveOciAccount(acct.id)
+    if (live) {
+      try { return await ociMonthlyCostLive(live) } catch (e) { console.error('[OCI live] monthlyCost failed:', e) }
+    }
+  }
   switch (acct.provider) {
     case 'aws':   return awsMonthlyCost(acct.id)
     case 'gcp':   return gcpMonthlyCost(acct.id)
@@ -50,15 +86,16 @@ function monthlyCost(acct: { id: string; provider: CloudProvider }): number {
 }
 
 // ── Overview ─────────────────────────────────────────────────────────────────
-export function simulatedOverview(
+export async function simulatedOverview(
   accounts: { id: string; name: string; provider: CloudProvider }[]
-): OverviewData {
+): Promise<OverviewData> {
   const accts = accounts.length ? accounts : DEFAULT_ACCOUNTS
 
-  // Merge daily trends (sum by date)
+  // Merge daily trends (sum by date) — run all in parallel
   const trendMap = new Map<string, number>()
-  for (const acct of accts) {
-    for (const pt of dailyTrend(acct)) {
+  const trendResults = await Promise.all(accts.map(acct => dailyTrend(acct)))
+  for (const pts of trendResults) {
+    for (const pt of pts) {
       trendMap.set(pt.date, (trendMap.get(pt.date) ?? 0) + pt.amountUsd)
     }
   }
@@ -71,25 +108,30 @@ export function simulatedOverview(
   const projectedEom   = parseFloat(((totalMtd / today) * 30).toFixed(2))
 
   // Top services across all accounts (top 12 by cost)
-  const allServices: ServiceCost[] = accts.flatMap(a => serviceCosts(a))
+  const allServicesArrays = await Promise.all(accts.map(a => serviceCosts(a)))
+  const allServices: ServiceCost[] = allServicesArrays.flat()
   const topServices = allServices
     .sort((a, b) => b.amountUsd - a.amountUsd)
     .slice(0, 12)
 
   // By provider
   const providerTotals = new Map<CloudProvider, number>()
-  for (const acct of accts) {
-    const c = monthlyCost(acct)
-    providerTotals.set(acct.provider, (providerTotals.get(acct.provider) ?? 0) + c)
-  }
+  const monthlyCosts = await Promise.all(accts.map(acct => monthlyCost(acct)))
+  accts.forEach((acct, i) => {
+    providerTotals.set(acct.provider, (providerTotals.get(acct.provider) ?? 0) + monthlyCosts[i])
+  })
   const byProvider = Array.from(providerTotals.entries()).map(([provider, amountUsd]) => ({
     provider, amountUsd: parseFloat(amountUsd.toFixed(2)),
   }))
 
-  // Savings
-  const rng          = createRng(hashSeed('overview:savings'))
-  const savingsFound = parseFloat((projectedEom * seededRand(rng, 0.12, 0.20)).toFixed(2))
-  const savingsApplied = parseFloat((savingsFound * seededRand(rng, 0.2, 0.45)).toFixed(2))
+  // Savings — sum real recs if available, else estimate from projected spend
+  const recs = await simulatedRecommendations(accts)
+  const savingsFound = recs.length > 0
+    ? parseFloat(recs.filter(r => r.status === 'open').reduce((s, r) => s + r.savingsPerMonth, 0).toFixed(2))
+    : parseFloat((projectedEom * seededRand(createRng(hashSeed('overview:savings')), 0.12, 0.20)).toFixed(2))
+  const savingsApplied = recs.length > 0
+    ? parseFloat(recs.filter(r => r.status === 'applied').reduce((s, r) => s + r.savingsPerMonth, 0).toFixed(2))
+    : parseFloat((savingsFound * seededRand(createRng(hashSeed('overview:applied')), 0.2, 0.45)).toFixed(2))
 
   // Alerts — one per vendor with realistic messages
   const alerts: OverviewData['alerts'] = []
@@ -98,13 +140,14 @@ export function simulatedOverview(
   if (providerTotals.has('azure')) alerts.push({ id: 'al-az',  severity: 'warning', message: 'Azure Data Factory budget 78% consumed with 9 days left', time: '1d ago' })
   if (providerTotals.has('oci'))   alerts.push({ id: 'al-oci', severity: 'info',    message: 'OCI Autonomous DB CPU spike detected — auto-scale triggered', time: '4h ago' })
 
+  const wasteItems = await simulatedWaste(accts)
   return {
     totalMtd,
     projectedEom,
     savingsFound,
     savingsApplied,
     accountCount:  accts.length,
-    wasteCount:    simulatedWaste(accts).length,
+    wasteCount:    wasteItems.length,
     dailyTrend:    daily,
     topServices,
     byProvider,
@@ -113,53 +156,77 @@ export function simulatedOverview(
 }
 
 // ── Recommendations ───────────────────────────────────────────────────────────
-export function simulatedRecommendations(
+export async function simulatedRecommendations(
   accounts: { id: string; name: string; provider: CloudProvider }[],
   accountId?: string
-): Recommendation[] {
+): Promise<Recommendation[]> {
   const accts = accounts.length ? accounts : DEFAULT_ACCOUNTS
   const filtered = accountId ? accts.filter(a => a.id === accountId) : accts
-  return filtered.flatMap(acct => {
+
+  const results = await Promise.all(filtered.map(async acct => {
+    if (acct.provider === 'oci') {
+      const live = liveOciAccount(acct.id)
+      if (live) {
+        try { return await ociRecommendationsLive(live) }
+        catch (e) { console.error('[OCI live] recommendations failed:', e) }
+      }
+    }
     switch (acct.provider) {
       case 'aws':   return awsRecommendations(acct.id, acct.name)
       case 'gcp':   return gcpRecommendations(acct.id, acct.name)
       case 'azure': return azureRecommendations(acct.id, acct.name)
       case 'oci':   return ociRecommendations(acct.id, acct.name)
     }
-  })
+  }))
+  return results.flat().filter(Boolean) as Recommendation[]
 }
 
 // ── Waste ─────────────────────────────────────────────────────────────────────
-export function simulatedWaste(
+export async function simulatedWaste(
   accounts: { id: string; name: string; provider: CloudProvider }[],
   provider?: CloudProvider
-): WasteItem[] {
+): Promise<WasteItem[]> {
   const accts = accounts.length ? accounts : DEFAULT_ACCOUNTS
   const filtered = provider ? accts.filter(a => a.provider === provider) : accts
-  return filtered.flatMap(acct => {
+
+  const results = await Promise.all(filtered.map(async acct => {
+    if (acct.provider === 'oci') {
+      const live = liveOciAccount(acct.id)
+      if (live) {
+        try { return await ociWasteLive(live) }
+        catch (e) { console.error('[OCI live] waste failed:', e) }
+      }
+    }
     switch (acct.provider) {
       case 'aws':   return awsWaste(acct.id, acct.name)
       case 'gcp':   return gcpWaste(acct.id, acct.name)
       case 'azure': return azureWaste(acct.id, acct.name)
       case 'oci':   return ociWaste(acct.id, acct.name)
     }
-  })
+  }))
+  return results.flat().filter(Boolean) as WasteItem[]
 }
 
 // ── Allocation ────────────────────────────────────────────────────────────────
-export function simulatedAllocation(
+export async function simulatedAllocation(
   accounts: { id: string; name: string; provider: CloudProvider }[]
-): AllocationRow[] {
+): Promise<AllocationRow[]> {
   const accts = accounts.length ? accounts : DEFAULT_ACCOUNTS
   // Merge allocation rows across accounts — combine same team names
   const mergeMap = new Map<string, AllocationRow>()
   for (const acct of accts) {
     let rows: AllocationRow[]
-    switch (acct.provider) {
-      case 'aws':   rows = awsAllocation(acct.id);   break
-      case 'gcp':   rows = gcpAllocation(acct.id);   break
-      case 'azure': rows = azureAllocation(acct.id); break
-      case 'oci':   rows = ociAllocation(acct.id);   break
+    if (acct.provider === 'oci') {
+      const live = liveOciAccount(acct.id)
+      if (live) {
+        try { rows = await ociAllocationLive(live) } catch (e) { console.error('[OCI live] allocation failed:', e); rows = ociAllocation(acct.id) }
+      } else { rows = ociAllocation(acct.id) }
+    } else {
+      switch (acct.provider) {
+        case 'aws':   rows = awsAllocation(acct.id);   break
+        case 'gcp':   rows = gcpAllocation(acct.id);   break
+        case 'azure': rows = azureAllocation(acct.id); break
+      }
     }
     for (const row of rows) {
       const existing = mergeMap.get(row.team)
@@ -179,19 +246,20 @@ export function simulatedAllocation(
   return rows
     .map(r => ({
       ...r,
-      pct:   parseFloat(((r.amountUsd / total) * 100).toFixed(1)),
-      trend: parseFloat((((r.amountUsd - r.prevAmountUsd) / r.prevAmountUsd) * 100).toFixed(1)),
+      pct:   total > 0 ? parseFloat(((r.amountUsd / total) * 100).toFixed(1)) : 0,
+      trend: r.prevAmountUsd > 0 ? parseFloat((((r.amountUsd - r.prevAmountUsd) / r.prevAmountUsd) * 100).toFixed(1)) : 0,
     }))
     .sort((a, b) => b.amountUsd - a.amountUsd)
 }
 
 // ── Explorer ──────────────────────────────────────────────────────────────────
-export function simulatedExplorer(
+export async function simulatedExplorer(
   accounts: { id: string; name: string; provider: CloudProvider }[],
   groupBy: string
-): { label: string; amountUsd: number; prev: number; region?: string; provider?: string }[] {
+): Promise<{ label: string; amountUsd: number; prev: number; region?: string; provider?: string }[]> {
   const accts = accounts.length ? accounts : DEFAULT_ACCOUNTS
-  const allServices = accts.flatMap(a => serviceCosts(a))
+  const allServicesArrays = await Promise.all(accts.map(a => serviceCosts(a)))
+  const allServices = allServicesArrays.flat()
 
   if (groupBy === 'service') {
     const map = new Map<string, { amountUsd: number; provider: string }>()
@@ -241,43 +309,46 @@ export function simulatedExplorer(
 
   if (groupBy === 'account') {
     const rng = createRng(hashSeed('explorer:account:prev'))
-    return accts.map(acct => {
-      const amt = monthlyCost(acct)
-      return {
-        label: acct.name,
-        amountUsd: parseFloat(amt.toFixed(2)),
-        prev: parseFloat((amt * seededRand(rng, 0.78, 1.15)).toFixed(2)),
-        provider: acct.provider,
-      }
-    }).sort((a, b) => b.amountUsd - a.amountUsd)
+    const amounts = await Promise.all(accts.map(acct => monthlyCost(acct)))
+    return accts.map((acct, i) => ({
+      label: acct.name,
+      amountUsd: parseFloat(amounts[i].toFixed(2)),
+      prev: parseFloat((amounts[i] * seededRand(rng, 0.78, 1.15)).toFixed(2)),
+      provider: acct.provider,
+    })).sort((a, b) => b.amountUsd - a.amountUsd)
   }
 
   return []
 }
 
 // ── Anomaly Detection ─────────────────────────────────────────────────────────
-export interface AnomalyEvent {
-  id: string
-  date: string
-  service: string
-  provider: CloudProvider
-  accountName: string
-  accountId: string
-  region: string
-  baseline: number   // expected daily spend
-  actual: number     // actual daily spend
-  spikePercent: number
-  severity: 'low' | 'medium' | 'high'
-  status: 'open' | 'acknowledged'
-  description: string
-}
+// AnomalyEvent type lives in lib/mock-data.ts (shared with oci-live.ts)
+export type { AnomalyEvent } from '@/lib/mock-data'
 
-export function simulatedAnomalies(
+export async function simulatedAnomalies(
   accounts: { id: string; name: string; provider: CloudProvider }[]
-): AnomalyEvent[] {
+): Promise<AnomalyEvent[]> {
   const accts = accounts.length ? accounts : DEFAULT_ACCOUNTS
-  const events: AnomalyEvent[] = []
 
+  // Separate OCI accounts with live credentials
+  const liveOciResults = await Promise.all(
+    accts
+      .filter(a => a.provider === 'oci')
+      .map(async acct => {
+        const live = liveOciAccount(acct.id)
+        if (!live) return null
+        try { return await ociAnomaliesLive(live, acct.name) } catch (e) { console.error('[OCI live] anomalies failed:', e); return null }
+      })
+  )
+  const liveEvents: AnomalyEvent[] = liveOciResults.filter(Boolean).flat() as AnomalyEvent[]
+
+  // Simulated events for non-OCI accounts (or OCI without credentials)
+  const simulatedAccts = accts.filter(a => {
+    if (a.provider !== 'oci') return true
+    return !liveOciAccount(a.id)  // only simulate OCI if no live creds
+  })
+
+  const simEvents: AnomalyEvent[] = []
   const ANOMALY_TEMPLATES: Record<CloudProvider, { service: string; region: string; description: string }[]> = {
     aws: [
       { service: 'EC2', region: 'eu-west-1', description: 'Unexpected instance type change caused spend spike' },
@@ -297,46 +368,32 @@ export function simulatedAnomalies(
       { service: 'Object Storage', region: 'uk-london-1', description: 'Egress spike — large backup restore operation' },
     ],
   }
-
   const today = new Date()
-
-  accts.forEach((acct, ai) => {
+  simulatedAccts.forEach((acct, ai) => {
     const templates = ANOMALY_TEMPLATES[acct.provider]
     const rng = createRng(hashSeed(`anomaly:${acct.id}`))
-
     templates.forEach((tpl, ti) => {
-      // Each account gets 1-2 anomalies at different offsets
-      const daysAgo = (ai * 3 + ti * 7 + 2) % 14  // deterministic offset 2-15 days ago
+      const daysAgo = (ai * 3 + ti * 7 + 2) % 14
       const date = new Date(today)
       date.setDate(date.getDate() - daysAgo)
       const dateStr = date.toISOString().split('T')[0]
-
       const baseline = seededRand(rng, 80, 400, 2)
       const spikeMultiplier = seededRand(rng, 1.35, 2.8, 2)
       const actual = parseFloat((baseline * spikeMultiplier).toFixed(2))
       const spikePercent = parseFloat(((spikeMultiplier - 1) * 100).toFixed(1))
       const severity: AnomalyEvent['severity'] =
         spikePercent >= 120 ? 'high' : spikePercent >= 60 ? 'medium' : 'low'
-
-      events.push({
-        id: `anom-${acct.id}-${ti}`,
-        date: dateStr,
-        service: tpl.service,
-        provider: acct.provider,
-        accountName: acct.name,
-        accountId: acct.id,
-        region: tpl.region,
-        baseline: parseFloat(baseline.toFixed(2)),
-        actual,
-        spikePercent,
-        severity,
-        status: daysAgo > 7 ? 'acknowledged' : 'open',
-        description: tpl.description,
+      simEvents.push({
+        id: `anom-${acct.id}-${ti}`, date: dateStr,
+        service: tpl.service, provider: acct.provider,
+        accountName: acct.name, accountId: acct.id, region: tpl.region,
+        baseline: parseFloat(baseline.toFixed(2)), actual, spikePercent, severity,
+        status: daysAgo > 7 ? 'acknowledged' : 'open', description: tpl.description,
       })
     })
   })
 
-  return events.sort((a, b) => b.date.localeCompare(a.date))
+  return [...liveEvents, ...simEvents].sort((a, b) => b.date.localeCompare(a.date))
 }
 
 // ── Forecasting ───────────────────────────────────────────────────────────────
@@ -352,16 +409,17 @@ export interface ForecastData {
   growthRate: number  // % month-over-month
 }
 
-export function simulatedForecast(
+export async function simulatedForecast(
   accounts: { id: string; name: string; provider: CloudProvider }[],
   horizon = 90
-): ForecastData {
+): Promise<ForecastData> {
   const accts = accounts.length ? accounts : DEFAULT_ACCOUNTS
 
   // Aggregate daily trend (last 90 days actual)
   const trendMap = new Map<string, number>()
-  for (const acct of accts) {
-    for (const pt of dailyTrend(acct)) {
+  const trendResults = await Promise.all(accts.map(acct => dailyTrend(acct)))
+  for (const pts of trendResults) {
+    for (const pt of pts) {
       trendMap.set(pt.date, (trendMap.get(pt.date) ?? 0) + pt.amountUsd)
     }
   }
@@ -421,94 +479,73 @@ export function simulatedForecast(
 }
 
 // ── RI / Savings Plan Coverage ────────────────────────────────────────────────
-export interface RiCoverageItem {
-  id: string
-  provider: CloudProvider
-  accountName: string
-  accountId: string
-  commitmentType: string   // e.g. 'EC2 Reserved Instance', 'Compute Savings Plan', 'Committed Use Discount'
-  service: string
-  region: string
-  term: '1yr' | '3yr'
-  paymentOption: 'No Upfront' | 'Partial Upfront' | 'All Upfront'
-  hourlyCost: number
-  unusedHours: number      // hours unused in last 30d
-  totalHours: number       // total hours in period
-  coveragePct: number      // what % of on-demand spend is covered
-  monthlyCost: number
-  wastedMonthly: number    // unused portion cost
-  expiresAt: string        // ISO date
-  status: 'active' | 'expiring_soon' | 'expired'
-}
+// RiCoverageItem type lives in lib/mock-data.ts
+export type { RiCoverageItem } from '@/lib/mock-data'
 
-export function simulatedRiCoverage(
+export async function simulatedRiCoverage(
   accounts: { id: string; name: string; provider: CloudProvider }[]
-): RiCoverageItem[] {
+): Promise<RiCoverageItem[]> {
   const accts = accounts.length ? accounts : DEFAULT_ACCOUNTS
-  const items: RiCoverageItem[] = []
   const today = new Date()
+  const allItems: RiCoverageItem[] = []
 
-  const TEMPLATES: Record<CloudProvider, { commitmentType: string; service: string; region: string; term: '1yr' | '3yr'; payment: RiCoverageItem['paymentOption'] }[]> = {
-    aws: [
-      { commitmentType: 'EC2 Reserved Instance', service: 'EC2', region: 'eu-west-1', term: '1yr', payment: 'Partial Upfront' },
-      { commitmentType: 'Compute Savings Plan', service: 'EC2/Fargate/Lambda', region: 'Global', term: '1yr', payment: 'No Upfront' },
-      { commitmentType: 'RDS Reserved Instance', service: 'RDS', region: 'us-east-1', term: '3yr', payment: 'All Upfront' },
-    ],
-    gcp: [
-      { commitmentType: 'Committed Use Discount', service: 'Compute Engine', region: 'us-central1', term: '1yr', payment: 'No Upfront' },
-      { commitmentType: 'Committed Use Discount', service: 'Cloud SQL', region: 'europe-west1', term: '3yr', payment: 'No Upfront' },
-    ],
-    azure: [
-      { commitmentType: 'Reserved VM Instance', service: 'Virtual Machines', region: 'westeurope', term: '1yr', payment: 'All Upfront' },
-      { commitmentType: 'Azure Savings Plan', service: 'Compute', region: 'Global', term: '3yr', payment: 'No Upfront' },
-    ],
-    oci: [
-      { commitmentType: 'Universal Credits', service: 'Compute VM', region: 'eu-frankfurt-1', term: '1yr', payment: 'All Upfront' },
-    ],
-  }
+  for (const acct of accts) {
+    // OCI: try live credits API first
+    if (acct.provider === 'oci') {
+      const live = liveOciAccount(acct.id)
+      if (live) {
+        try {
+          const liveItems = await ociCommitmentsLive(live)
+          allItems.push(...liveItems)
+          continue
+        } catch (e) { console.error('[OCI live] commitments failed:', e) }
+      }
+    }
 
-  accts.forEach((acct, ai) => {
-    const templates = TEMPLATES[acct.provider]
+    // Simulation for all other providers (and OCI fallback)
     const rng = createRng(hashSeed(`ri:${acct.id}`))
-
-    templates.forEach((tpl, ti) => {
+    const TEMPLATES: Record<CloudProvider, { commitmentType: string; service: string; region: string; term: '1yr' | '3yr'; payment: RiCoverageItem['paymentOption'] }[]> = {
+      aws: [
+        { commitmentType: 'EC2 Reserved Instance', service: 'EC2', region: 'eu-west-1', term: '1yr', payment: 'Partial Upfront' },
+        { commitmentType: 'Compute Savings Plan', service: 'EC2/Fargate/Lambda', region: 'Global', term: '1yr', payment: 'No Upfront' },
+        { commitmentType: 'RDS Reserved Instance', service: 'RDS', region: 'us-east-1', term: '3yr', payment: 'All Upfront' },
+      ],
+      gcp: [
+        { commitmentType: 'Committed Use Discount', service: 'Compute Engine', region: 'us-central1', term: '1yr', payment: 'No Upfront' },
+        { commitmentType: 'Committed Use Discount', service: 'Cloud SQL', region: 'europe-west1', term: '3yr', payment: 'No Upfront' },
+      ],
+      azure: [
+        { commitmentType: 'Reserved VM Instance', service: 'Virtual Machines', region: 'westeurope', term: '1yr', payment: 'All Upfront' },
+        { commitmentType: 'Azure Savings Plan', service: 'Compute', region: 'Global', term: '3yr', payment: 'No Upfront' },
+      ],
+      oci: [
+        { commitmentType: 'Universal Credits', service: 'Compute VM', region: 'ap-mumbai-1', term: '1yr', payment: 'All Upfront' },
+      ],
+    }
+    TEMPLATES[acct.provider].forEach((tpl, ti) => {
       const hourlyCost = seededRand(rng, 0.08, 1.20, 4)
-      const totalHours = 720  // 30d
+      const totalHours = 720
       const unusedFraction = seededRand(rng, 0.02, 0.30, 3)
       const unusedHours = parseFloat((totalHours * unusedFraction).toFixed(1))
       const coveragePct = parseFloat((seededRand(rng, 45, 95, 1)).toFixed(1))
       const monthlyCost = parseFloat((hourlyCost * totalHours).toFixed(2))
       const wastedMonthly = parseFloat((hourlyCost * unusedHours).toFixed(2))
-
-      // Expiry: spread across next 6-24 months deterministically
-      const monthsOut = (ai * 4 + ti * 7 + 2) % 24
+      const monthsOut = (accts.indexOf(acct) * 4 + ti * 7 + 2) % 24
       const expiry = new Date(today)
       expiry.setMonth(expiry.getMonth() + monthsOut)
       const expiresAt = expiry.toISOString().split('T')[0]
       const status: RiCoverageItem['status'] =
         monthsOut === 0 ? 'expired' : monthsOut <= 2 ? 'expiring_soon' : 'active'
-
-      items.push({
-        id: `ri-${acct.id}-${ti}`,
-        provider: acct.provider,
-        accountName: acct.name,
-        accountId: acct.id,
-        commitmentType: tpl.commitmentType,
-        service: tpl.service,
-        region: tpl.region,
-        term: tpl.term,
-        paymentOption: tpl.payment,
-        hourlyCost,
-        unusedHours,
-        totalHours,
-        coveragePct,
-        monthlyCost,
-        wastedMonthly,
-        expiresAt,
-        status,
+      allItems.push({
+        id: `ri-${acct.id}-${ti}`, provider: acct.provider,
+        accountName: acct.name, accountId: acct.id,
+        commitmentType: tpl.commitmentType, service: tpl.service, region: tpl.region,
+        term: tpl.term, paymentOption: tpl.payment,
+        hourlyCost, unusedHours, totalHours, coveragePct, monthlyCost, wastedMonthly,
+        expiresAt, status,
       })
     })
-  })
+  }
 
-  return items.sort((a, b) => b.wastedMonthly - a.wastedMonthly)
+  return allItems.sort((a, b) => b.wastedMonthly - a.wastedMonthly)
 }
