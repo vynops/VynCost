@@ -134,8 +134,8 @@ Edit `.env.local`:
 VYNCOST_SECRET=your-random-secret-here
 
 # Admin login credentials
-VYNCOST_ADMIN_EMAIL=admin@example.com
-VYNCOST_ADMIN_PASSWORD=your-secure-password
+VYNCOST_ADMIN_EMAIL=admin@vyncost.local
+VYNCOST_ADMIN_PASSWORD=changeme
 
 # Optional: Groq API key for AI Copilot
 # Leave empty for demo mode (intelligent pre-loaded responses)
