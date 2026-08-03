@@ -1,8 +1,8 @@
 'use client'
 import { usePathname, useRouter } from 'next/navigation'
-import { LogOut, Menu, DollarSign, LayoutDashboard, Search, Lightbulb, Trash2, Target, PieChart, Sparkles, Settings } from 'lucide-react'
-import { useState } from 'react'
-import useSWR from 'swr'
+import { LogOut, Menu, LayoutDashboard, Search, Lightbulb, Trash2, Target, PieChart, Sparkles, Settings, RefreshCw, Bell } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import useSWR, { useSWRConfig } from 'swr'
 import Link from 'next/link'
 import { cn, providerLabel } from '@/lib/utils'
 import type { CloudProvider } from '@/lib/account-store'
@@ -38,21 +38,30 @@ const MOB_NAV = [
 export default function Header() {
   const path = usePathname()
   const router = useRouter()
+  const { mutate } = useSWRConfig()
   const { title, subtitle } = TITLES[path] ?? { title: 'VynCost', subtitle: '' }
   const [menuOpen, setMenuOpen] = useState(false)
+  const [spinning, setSpinning] = useState(false)
+
   const { data: accounts = [] } = useSWR<{ provider: CloudProvider; name: string }[]>('/api/accounts', fetcher, { refreshInterval: 30000 })
+  const { data: anomalies = [] } = useSWR<{ id: string }[]>('/api/anomalies', fetcher, { refreshInterval: 60000 })
 
   const isLive = accounts.length > 0
   const providers = [...new Set(accounts.map(a => a.provider))]
-  const modeLabel = isLive
+  const statusLabel = isLive
     ? providers.length === 1
-      ? `Live · ${providerLabel(providers[0])}`
-      : `Live · ${accounts.length} accounts`
+      ? providerLabel(providers[0])
+      : `${accounts.length} Clouds`
     : 'Demo Mode'
-  const modeColor = isLive
-    ? 'bg-green-500/10 border-green-500/20 text-green-400'
-    : 'bg-orange-500/10 border-orange-500/20 text-orange-400'
   const dotColor = isLive ? 'bg-green-400' : 'bg-orange-400'
+  const textColor = isLive ? 'text-green-400' : 'text-orange-400'
+  const anomalyCount = anomalies.length
+
+  const handleRefresh = useCallback(async () => {
+    setSpinning(true)
+    await mutate(() => true, undefined, { revalidate: true })
+    setTimeout(() => setSpinning(false), 600)
+  }, [mutate])
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -72,14 +81,45 @@ export default function Header() {
           {subtitle && <p className="text-[11px] text-slate-500 leading-tight mt-0.5 hidden sm:block">{subtitle}</p>}
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${modeColor}`}>
-            <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${dotColor}`} />
-            <span className="text-xs font-medium">{modeLabel}</span>
-          </div>
-          <button onClick={logout} className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors">
-            <LogOut size={15} />
+        <div className="flex items-center gap-1">
+          {/* Refresh */}
+          <button
+            onClick={handleRefresh}
+            title="Refresh data"
+            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+          >
+            <RefreshCw size={14} className={spinning ? 'animate-spin' : ''} />
           </button>
+
+          {/* Bell → anomalies */}
+          <Link
+            href="/anomalies"
+            title={anomalyCount > 0 ? `${anomalyCount} anomalies detected` : 'No anomalies'}
+            className="relative p-1.5 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+          >
+            <Bell size={14} />
+            {anomalyCount > 0 && (
+              <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-red-500 ring-1 ring-[#0e1420]" />
+            )}
+          </Link>
+
+          {/* Logout */}
+          <button
+            onClick={logout}
+            title="Sign out"
+            className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            <LogOut size={14} />
+          </button>
+
+          {/* Divider */}
+          <span className="w-px h-5 bg-slate-700/60 mx-1 hidden sm:block" />
+
+          {/* Status pill */}
+          <div className="hidden sm:flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${dotColor} ${isLive ? 'animate-pulse' : ''}`} />
+            <span className={`text-xs font-semibold ${textColor}`}>{statusLabel}</span>
+          </div>
         </div>
       </header>
 
@@ -102,3 +142,4 @@ export default function Header() {
     </>
   )
 }
+

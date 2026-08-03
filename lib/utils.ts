@@ -11,6 +11,19 @@ export function fmtUsdFull(n: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
 }
 
+/** Format an amount in any billing currency. Falls back to USD when currency is absent or 'USD'. */
+export function fmtCurrency(n: number, currency?: string, compact = false): string {
+  const cur = (currency ?? 'USD').toUpperCase()
+  if (cur === 'USD') return fmtUsd(n, compact)
+  if (compact && n >= 1000) return `${cur} ${(n / 1000).toFixed(1)}k`
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(n)
+  } catch {
+    // Unknown currency code — display as plain number with code prefix
+    return `${cur} ${n.toFixed(2)}`
+  }
+}
+
 export function fmtPct(n: number): string {
   const sign = n > 0 ? '+' : ''
   return `${sign}${n.toFixed(1)}%`
@@ -76,3 +89,4 @@ export function exportCsv(rows: Record<string, unknown>[], filename: string): vo
   a.href = url; a.download = filename; a.click()
   URL.revokeObjectURL(url)
 }
+

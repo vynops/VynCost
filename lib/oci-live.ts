@@ -10,7 +10,7 @@ import { IdentityClient } from 'oci-identity'
 import { OptimizerClient, models as optModels } from 'oci-optimizer'
 import { BlockstorageClient, ComputeClient, models as coreModels } from 'oci-core'
 import { MonitoringClient, models as monModels } from 'oci-monitoring'
-import type { CloudAccount } from './account-store'
+import { updateAccount, type CloudAccount } from './account-store'
 import type { ServiceCost, CostPoint, AllocationRow, AnomalyEvent, Recommendation, WasteItem, RiCoverageItem } from './mock-data'
 
 // Module-level types (Turbopack/esbuild does not allow type aliases inside function bodies)
@@ -49,11 +49,38 @@ export async function ociTestConnection(
 ): Promise<{ ok: boolean; message?: string; error?: string }> {
   try {
     const auth = makeAuth(a)
-    const client = new IdentityClient({ authenticationDetailsProvider: auth })
-    client.regionId = a.ociRegion!
-    const resp = await client.getTenancy({ tenancyId: a.ociTenancyOcid! })
+    // Step 1: basic connectivity via Identity API
+    const identClient = new IdentityClient({ authenticationDetailsProvider: auth })
+    identClient.regionId = a.ociRegion!
+    const resp = await identClient.getTenancy({ tenancyId: a.ociTenancyOcid! })
     const name = resp.tenancy.name ?? a.ociTenancyOcid
-    return { ok: true, message: `Connected to OCI tenancy "${name}". Cost & Usage Reports access confirmed.` }
+
+    // Step 2: verify Cost & Usage Reports access (needs separate IAM policy)
+    // Use currentMonthRange() — OCI Usage API requires midnight UTC day-boundary dates.
+    // Using new Date() (mid-day timestamp) causes the API to reject the request,
+    // which would be misreported as a permissions error.
+    try {
+      const usageClient = new UsageapiClient({ authenticationDetailsProvider: auth })
+      usageClient.regionId = a.ociRegion!
+      const { start, end } = currentMonthRange()
+      await usageClient.requestSummarizedUsages({
+        requestSummarizedUsagesDetails: {
+          tenantId: a.ociTenancyOcid!,
+          timeUsageStarted: start,
+          timeUsageEnded: end,
+          granularity: usageModels.RequestSummarizedUsagesDetails.Granularity.Monthly,
+          queryType: usageModels.RequestSummarizedUsagesDetails.QueryType.Cost,
+        },
+        limit: 2,
+      })
+      return { ok: true, message: `Connected to OCI tenancy "${name}". Identity and Cost & Usage Reports access confirmed.` }
+    } catch (usageErr: unknown) {
+      const usageMsg = usageErr instanceof Error ? usageErr.message : String(usageErr)
+      return {
+        ok: false,
+        error: `Connected to tenancy "${name}" but Cost & Usage Reports access failed: ${usageMsg}. Ensure the user has "inspect usage-reports" policy in the root compartment.`,
+      }
+    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return { ok: false, error: `OCI connection failed: ${msg}` }
@@ -170,22 +197,39 @@ function prevMonthRange(): { start: Date; end: Date } {
 
 // ── Service costs (current month, grouped by service) ────────────────────────
 
-export async function ociServiceCostsLive(a: CloudAccount): Promise<ServiceCost[]> {
-  const { start, end } = currentMonthRange()
+export async function ociServiceCostsLive(a: CloudAccount, days?: number): Promise<ServiceCost[]> {
+  // Determine current and prior period boundaries + granularity
+  let start: Date, end: Date, prevStart: Date, prevEnd: Date
+  let granularity: usageModels.RequestSummarizedUsagesDetails.Granularity
+
+  if (days && days > 0) {
+    // Daily granularity avoids OCI's month-boundary alignment requirement.
+    // The aggregation loop below sums computedAmount by service regardless of granularity.
+    granularity = usageModels.RequestSummarizedUsagesDetails.Granularity.Daily
+    const today = new Date(); today.setUTCHours(0, 0, 0, 0)
+    end = new Date(today); end.setUTCDate(end.getUTCDate() + 1)   // exclusive end = include today
+    start = new Date(today); start.setUTCDate(start.getUTCDate() - days)
+    prevEnd = new Date(start)
+    prevStart = new Date(prevEnd); prevStart.setUTCDate(prevStart.getUTCDate() - days)
+  } else {
+    granularity = usageModels.RequestSummarizedUsagesDetails.Granularity.Monthly
+    const curr = currentMonthRange(); start = curr.start; end = curr.end
+    const prev = prevMonthRange(); prevStart = prev.start; prevEnd = prev.end
+  }
+
   const items = await fetchUsage(a, {
-    granularity: usageModels.RequestSummarizedUsagesDetails.Granularity.Monthly,
+    granularity,
     groupBy: ['service', 'region'],
     timeStart: start,
     timeEnd: end,
   })
 
-  // Also fetch prev month for trend calculation
-  const prev = prevMonthRange()
+  // Also fetch prior period for trend calculation
   const prevItems = await fetchUsage(a, {
-    granularity: usageModels.RequestSummarizedUsagesDetails.Granularity.Monthly,
+    granularity,
     groupBy: ['service', 'region'],
-    timeStart: prev.start,
-    timeEnd: prev.end,
+    timeStart: prevStart,
+    timeEnd: prevEnd,
   })
 
   // Build prev month map: service → total
@@ -195,17 +239,29 @@ export async function ociServiceCostsLive(a: CloudAccount): Promise<ServiceCost[
     prevMap.set(svc, (prevMap.get(svc) ?? 0) + (item.computedAmount ?? 0))
   }
 
-  // Aggregate current month by service+region (keep highest-cost region per service)
-  const map = new Map<string, { amountUsd: number; region: string }>()
+  // Detect billing currency from the first item that carries a currency field.
+  // OCI Usage API returns computedAmount in the tenancy’s home currency (e.g. SGD, USD).
+  const detectedCurrency = (items.find(i => (i as { currency?: string }).currency) as { currency?: string } | undefined)?.currency ?? 'USD'
+  // Persist the detected currency back to the account record so the UI can show the right code.
+  if (detectedCurrency !== (a.currency ?? 'USD') && a.id) {
+    try { updateAccount(a.id, { currency: detectedCurrency }) } catch { /* best-effort */ }
+  }
+
+  // Aggregate current month by service.
+  // Track bestRegionAmt separately from the running total so region always reflects
+  // the region with the single highest individual charge, not the accumulated total.
+  const map = new Map<string, { amountUsd: number; region: string; bestRegionAmt: number }>()
   for (const item of items) {
     const svc = item.service ?? 'Other'
     const region = item.region ?? a.ociRegion ?? 'unknown'
-    const existing = map.get(svc)
     const amount = item.computedAmount ?? 0
-    if (!existing || amount > existing.amountUsd) {
-      map.set(svc, { amountUsd: (existing?.amountUsd ?? 0) + amount, region })
+    const existing = map.get(svc)
+    if (!existing) {
+      map.set(svc, { amountUsd: amount, region, bestRegionAmt: amount })
+    } else if (amount > existing.bestRegionAmt) {
+      map.set(svc, { amountUsd: existing.amountUsd + amount, region, bestRegionAmt: amount })
     } else {
-      map.set(svc, { amountUsd: existing.amountUsd + amount, region: existing.region })
+      map.set(svc, { amountUsd: existing.amountUsd + amount, region: existing.region, bestRegionAmt: existing.bestRegionAmt })
     }
   }
 
@@ -221,6 +277,7 @@ export async function ociServiceCostsLive(a: CloudAccount): Promise<ServiceCost[
       amountUsd: parseFloat(amountUsd.toFixed(2)),
       trend,
       region,
+      currency: detectedCurrency,
     })
   }
 
@@ -365,7 +422,7 @@ export async function ociAnomaliesLive(
   const events: AnomalyEvent[] = []
   const SPIKE_THRESHOLD = 0.30   // 30% above baseline triggers anomaly
   const BASELINE_DAYS = 14
-  const MIN_BASELINE = 1.0       // ignore days with < $1 baseline (avoids false positives on $0 baseline)
+  const MIN_BASELINE = 0.10      // ignore days with < $0.10 baseline (avoids division-by-zero on $0 days)
 
   for (const [service, points] of serviceMap) {
     const sorted = points.sort((x, y) => x.date.localeCompare(y.date))
@@ -773,3 +830,4 @@ export async function ociCommitmentsLive(a: CloudAccount): Promise<RiCoverageIte
   CACHE.set(ck, { ts: Date.now(), data: results })
   return results
 }
+

@@ -3,7 +3,7 @@ import useSWR from 'swr'
 import { Area, AreaChart, CartesianGrid, Tooltip, ResponsiveContainer, XAxis, YAxis, BarChart, Bar, Cell } from 'recharts'
 import { TrendingDown, TrendingUp, DollarSign, AlertTriangle, Zap, Trash2, ArrowRight, ChevronUp, ChevronDown } from 'lucide-react'
 import Link from 'next/link'
-import { fmtUsd, fmtPct, providerLabel, trendColor } from '@/lib/utils'
+import { fmtUsd, fmtCurrency, fmtPct, providerLabel, trendColor } from '@/lib/utils'
 import type { OverviewData } from '@/lib/mock-data'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -64,12 +64,12 @@ export default function OverviewPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Link href="/explorer" className="block hover:scale-[1.02] transition-transform">
-          <StatCard label="Month-to-Date Spend" value={fmtUsd(data.totalMtd, true)}
-            sub={`Projected: ${fmtUsd(data.projectedEom, true)} EOM`} icon={DollarSign} color="orange" />
+          <StatCard label="Month-to-Date Spend" value={fmtCurrency(data.totalMtd, data.currency, true)}
+            sub={`Projected: ${fmtCurrency(data.projectedEom, data.currency, true)} EOM`} icon={DollarSign} color="orange" />
         </Link>
         <Link href="/recommendations" className="block hover:scale-[1.02] transition-transform">
-          <StatCard label="Savings Found" value={fmtUsd(data.savingsFound, true)}
-            sub={`${fmtUsd(data.savingsApplied, true)} already applied`} icon={TrendingDown} color="green" />
+          <StatCard label="Savings Found" value={fmtCurrency(data.savingsFound, data.currency, true)}
+            sub={`${fmtCurrency(data.savingsApplied, data.currency, true)} already applied`} icon={TrendingDown} color="green" />
         </Link>
         <Link href="/waste" className="block hover:scale-[1.02] transition-transform">
           <StatCard label="Waste Detected" value={`${data.wasteCount} resources`}
@@ -104,7 +104,7 @@ export default function OverviewPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-sm font-bold text-white">Daily Spend — Last 30 Days</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Peak day: {topDay?.date} ({fmtUsd(topDay?.amountUsd)})</p>
+              <p className="text-xs text-slate-500 mt-0.5">Peak day: {topDay?.date} ({fmtCurrency(topDay?.amountUsd ?? 0, data.currency)})</p>
             </div>
             <Link href="/explorer" className="text-xs text-orange-400 hover:text-orange-300 flex items-center gap-1">
               Explorer <ArrowRight size={11} />
@@ -120,11 +120,11 @@ export default function OverviewPage() {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e2a3a" />
               <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 10 }} tickLine={false} interval={4} />
-              <YAxis tick={{ fill: '#475569', fontSize: 10 }} tickLine={false} tickFormatter={v => `$${v}`} />
+              <YAxis tick={{ fill: '#475569', fontSize: 10 }} tickLine={false} tickFormatter={v => fmtCurrency(v as number, data.currency, true).replace(/,/g, '')} />
               <Tooltip
                 contentStyle={{ background: '#111827', border: '1px solid #1e2a3a', borderRadius: 12, fontSize: 12 }}
                 labelStyle={{ color: '#94a3b8' }}
-                formatter={(v) => [fmtUsd(v as number), 'Cost']}
+                formatter={(v) => [fmtCurrency(v as number, data.currency), 'Cost']}
               />
               <Area type="monotone" dataKey="cost" stroke="#f97316" strokeWidth={2} fill="url(#costGrad)" dot={false} />
             </AreaChart>
@@ -140,7 +140,7 @@ export default function OverviewPage() {
               <XAxis type="number" tick={{ fill: '#475569', fontSize: 10 }} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
               <YAxis type="category" dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} width={40} />
               <Tooltip contentStyle={{ background: '#111827', border: '1px solid #1e2a3a', borderRadius: 10, fontSize: 12 }}
-                formatter={(v) => [fmtUsd(v as number), 'Spend']} />
+                formatter={(v, _n, props) => [fmtCurrency(v as number, props?.payload?.currency), 'Spend']} />
               <Bar dataKey="cost" radius={[0, 6, 6, 0]}>
                 {data.byProvider.map((p) => (
                   <Cell key={p.provider} fill={PROVIDER_COLORS[p.provider] || '#f97316'} />
@@ -156,7 +156,7 @@ export default function OverviewPage() {
                   <span className="w-2 h-2 rounded-full" style={{ background: PROVIDER_COLORS[p.provider] }} />
                   <span className="text-slate-400">{providerLabel(p.provider)}</span>
                 </div>
-                <span className="font-mono font-bold text-white">{fmtUsd(p.amountUsd, true)}</span>
+                <span className="font-mono font-bold text-white">{fmtCurrency(p.amountUsd, p.currency, true)}</span>
               </div>
             ))}
           </div>
@@ -191,12 +191,13 @@ export default function OverviewPage() {
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
                       s.provider === 'aws' ? 'bg-orange-500/10 text-orange-400' :
                       s.provider === 'gcp' ? 'bg-blue-500/10 text-blue-400' :
+                      s.provider === 'oci' ? 'bg-red-500/10 text-red-400' :
                       'bg-sky-500/10 text-sky-400'
                     }`}>{s.provider}</span>
                   </td>
                   <td className="py-2.5 text-slate-400 hidden md:table-cell">{s.accountName}</td>
                   <td className="py-2.5 text-slate-500 font-mono hidden lg:table-cell">{s.region}</td>
-                  <td className="py-2.5 text-right font-mono font-bold text-white">{fmtUsd(s.amountUsd)}</td>
+                  <td className="py-2.5 text-right font-mono font-bold text-white">{fmtCurrency(s.amountUsd, s.currency)}</td>
                   <td className={`py-2.5 text-right font-medium ${trendColor(s.trend)}`}>
                     {fmtPct(s.trend)}
                   </td>
@@ -232,3 +233,4 @@ export default function OverviewPage() {
     </div>
   )
 }
+

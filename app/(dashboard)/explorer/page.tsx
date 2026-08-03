@@ -3,7 +3,7 @@ import useSWR from 'swr'
 import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { ChevronUp, ChevronDown, Minus, Download } from 'lucide-react'
-import { fmtUsd, fmtPct, trendColor, exportCsv } from '@/lib/utils'
+import { fmtUsd, fmtCurrency, fmtPct, trendColor, exportCsv } from '@/lib/utils'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -24,7 +24,7 @@ const COLORS = ['#f97316', '#60a5fa', '#a78bfa', '#34d399', '#fb7185', '#fbbf24'
 
 const PROVIDER_COLORS: Record<string, string> = { aws: '#f97316', gcp: '#60a5fa', azure: '#38bdf8', oci: '#f87171' }
 
-type ExplorerRow = { label: string; amountUsd: number; prev: number; region?: string; provider?: string }
+type ExplorerRow = { label: string; amountUsd: number; prev: number; currency?: string; region?: string; provider?: string }
 
 export default function ExplorerPage() {
   const [groupBy, setGroupBy] = useState('service')
@@ -65,7 +65,7 @@ export default function ExplorerPage() {
             <Download size={12} /> Export CSV
           </button>
           <div className="text-right">
-            <div className="text-lg font-black text-white">{fmtUsd(total)}</div>
+            <div className="text-lg font-black text-white">{fmtCurrency(total, data[0]?.currency)}</div>
             <div className={`text-xs ${trendColor(totalTrend)} flex items-center justify-end gap-0.5`}>
               {totalTrend > 0 ? <ChevronUp size={11} /> : totalTrend < 0 ? <ChevronDown size={11} /> : <Minus size={11} />}
               {fmtPct(totalTrend)} vs prior period
@@ -136,13 +136,14 @@ export default function ExplorerPage() {
                               <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
                                 row.provider === 'aws' ? 'bg-orange-500/10 text-orange-400' :
                                 row.provider === 'gcp' ? 'bg-blue-500/10 text-blue-400' :
+                                row.provider === 'oci' ? 'bg-red-500/10 text-red-400' :
                                 'bg-sky-500/10 text-sky-400'
                               }`}>{row.provider}</span>
                             )}
                           </td>
                         )}
-                        <td className="px-4 sm:px-6 py-3 text-right font-mono font-bold text-white">{fmtUsd(row.amountUsd)}</td>
-                        <td className="px-4 sm:px-6 py-3 text-right font-mono text-slate-500 hidden md:table-cell">{fmtUsd(row.prev)}</td>
+                        <td className="px-4 sm:px-6 py-3 text-right font-mono font-bold text-white">{fmtCurrency(row.amountUsd, row.currency)}</td>
+                        <td className="px-4 sm:px-6 py-3 text-right font-mono text-slate-500 hidden md:table-cell">{fmtCurrency(row.prev, row.currency)}</td>
                         <td className="px-4 sm:px-6 py-3 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -164,8 +165,8 @@ export default function ExplorerPage() {
                 <tfoot>
                   <tr className="border-t border-slate-700 bg-slate-800/30">
                     <td colSpan={groupBy === 'service' ? 2 : 1} className="px-4 sm:px-6 py-3 text-xs font-bold text-slate-300">Total</td>
-                    <td className="px-4 sm:px-6 py-3 text-right font-mono font-black text-white">{fmtUsd(total)}</td>
-                    <td className="px-4 sm:px-6 py-3 text-right font-mono text-slate-400 hidden md:table-cell">{fmtUsd(prevTotal)}</td>
+                    <td className="px-4 sm:px-6 py-3 text-right font-mono font-black text-white">{fmtCurrency(total, data[0]?.currency)}</td>
+                    <td className="px-4 sm:px-6 py-3 text-right font-mono text-slate-400 hidden md:table-cell">{fmtCurrency(prevTotal, data[0]?.currency)}</td>
                     <td className="px-4 sm:px-6 py-3 text-right text-slate-400">100%</td>
                     <td className={`px-4 sm:px-6 py-3 text-right font-bold ${trendColor(totalTrend)}`}>
                       <span className="flex items-center justify-end gap-0.5">
@@ -183,3 +184,4 @@ export default function ExplorerPage() {
     </div>
   )
 }
+

@@ -4,6 +4,7 @@ import { simulatedOverview } from '@/lib/simulation'
 
 export async function GET() {
   const accounts = listAccounts()
-  const data = await simulatedOverview(accounts.map(a => ({ id: a.id, name: a.name, provider: a.provider })))
+  const data = await simulatedOverview(accounts.map(a => ({ id: a.id, name: a.name, provider: a.provider, currency: a.currency })))
   return NextResponse.json(data)
 }
+

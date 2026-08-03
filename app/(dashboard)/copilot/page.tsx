@@ -1,7 +1,7 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
 import useSWR from 'swr'
-import { Sparkles, Send, Loader2, User, Bot, RotateCcw, History, Zap } from 'lucide-react'
+import { Sparkles, Send, Loader2, User, Bot, History, Zap, X, Search, Trash2 } from 'lucide-react'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 const API_CONTEXT_MSGS = 20  // max messages sent to Groq (keeps tokens low; full history still shown)
@@ -86,6 +86,8 @@ export default function CopilotPage() {
   const [messages, setMessages] = useState<Message[]>(() => loadHistory())
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyFilter, setHistoryFilter] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const { data: usage, mutate: mutateUsage } = useSWR<{
     today: { requests: number; totalTokens: number; promptTokens: number; completionTokens: number }
@@ -190,32 +192,127 @@ export default function CopilotPage() {
               <History size={10} />{humanTurns} msg{humanTurns !== 1 ? 's' : ''}
             </span>
           )}
-          <button onClick={clearHistory} title="Clear conversation history"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors">
-            <RotateCcw size={13} />
+          <button onClick={() => { setShowHistory(v => !v); setHistoryFilter('') }}
+            title="Prompt history"
+            className={`p-1.5 rounded-lg transition-colors ${
+              showHistory ? 'text-violet-400 bg-violet-500/10' : 'text-slate-500 hover:text-violet-400 hover:bg-violet-500/10'
+            }`}>
+            <History size={13} />
           </button>
         </div>
       </div>
 
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-4 pb-2">
-        {rendered.map((item, i) =>
-          'divider' in item
-            ? <DateDivider key={`div-${i}`} date={item.date} />
-            : <MessageBubble key={i} msg={item} />
-        )}
-        {loading && (
-          <div className="flex items-start gap-3">
-            <div className="w-7 h-7 rounded-xl bg-violet-500/20 border border-violet-500/30 flex items-center justify-center">
-              <Bot size={13} className="text-violet-400" />
+      {/* Messages + History overlay */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* Scrollable messages */}
+        <div className="absolute inset-0 overflow-y-auto space-y-4 pb-2 pr-1">
+          {rendered.map((item, i) =>
+            'divider' in item
+              ? <DateDivider key={`div-${i}`} date={item.date} />
+              : <MessageBubble key={i} msg={item} />
+          )}
+          {loading && (
+            <div className="flex items-start gap-3">
+              <div className="w-7 h-7 rounded-xl bg-violet-500/20 border border-violet-500/30 flex items-center justify-center">
+                <Bot size={13} className="text-violet-400" />
+              </div>
+              <div className="bg-[#1a2335] border border-slate-700/60 rounded-2xl rounded-tl-sm px-4 py-3">
+                <Loader2 size={14} className="text-violet-400 animate-spin" />
+              </div>
             </div>
-            <div className="bg-[#1a2335] border border-slate-700/60 rounded-2xl rounded-tl-sm px-4 py-3">
-              <Loader2 size={14} className="text-violet-400 animate-spin" />
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* History panel overlay */}
+        {showHistory && (() => {
+          const allPrompts = messages.filter(m => m.role === 'user')
+          const filtered = historyFilter
+            ? allPrompts.filter(m => m.content.toLowerCase().includes(historyFilter.toLowerCase()))
+            : allPrompts
+          // Group by date, newest date first
+          const byDate = new Map<string, Message[]>()
+          for (const msg of [...filtered].reverse()) {
+            const d = msg.date || 'Unknown'
+            if (!byDate.has(d)) byDate.set(d, [])
+            byDate.get(d)!.push(msg)
+          }
+          return (
+            <div className="absolute inset-0 z-10 bg-[#0b0f1a]/97 backdrop-blur-sm flex flex-col rounded-xl border border-slate-800/80">
+              {/* Panel header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 shrink-0">
+                <div className="flex items-center gap-2">
+                  <History size={13} className="text-violet-400" />
+                  <span className="text-sm font-semibold text-white">Prompt History</span>
+                  <span className="text-[10px] text-slate-600">{allPrompts.length} prompts</span>
+                </div>
+                <button onClick={() => setShowHistory(false)}
+                  className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-colors">
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Search */}
+              <div className="px-3 py-2 border-b border-slate-800/60 shrink-0">
+                <div className="flex items-center gap-2 bg-[#111827] border border-slate-700/60 rounded-lg px-2.5 py-1.5">
+                  <Search size={12} className="text-slate-600 shrink-0" />
+                  <input
+                    value={historyFilter}
+                    onChange={e => setHistoryFilter(e.target.value)}
+                    placeholder="Filter prompts…"
+                    className="flex-1 bg-transparent text-xs text-white placeholder-slate-600 focus:outline-none"
+                  />
+                  {historyFilter && (
+                    <button onClick={() => setHistoryFilter('')} className="text-slate-600 hover:text-slate-400">
+                      <X size={11} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* List */}
+              <div className="flex-1 overflow-y-auto py-2">
+                {byDate.size === 0 ? (
+                  <div className="text-center text-slate-600 text-xs py-10">No prompts found</div>
+                ) : (
+                  [...byDate.entries()].map(([date, prompts]) => (
+                    <div key={date} className="mb-3">
+                      <div className="px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-600">
+                        {date === todayStr() ? 'Today' : date}
+                      </div>
+                      {prompts.map((msg, i) => (
+                        <button
+                          key={i}
+                          onClick={() => { setInput(msg.content); setShowHistory(false) }}
+                          className="w-full text-left px-4 py-2 hover:bg-slate-800/60 transition-colors group"
+                        >
+                          <div className="text-xs text-slate-300 group-hover:text-white leading-snug line-clamp-2">
+                            {msg.content}
+                          </div>
+                          {msg.time && (
+                            <div className="text-[10px] text-slate-600 mt-0.5">{msg.time}</div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Footer — clear all */}
+              <div className="px-4 py-2.5 border-t border-slate-800 shrink-0">
+                <button
+                  onClick={() => { clearHistory(); setShowHistory(false) }}
+                  className="flex items-center gap-1.5 text-[11px] text-slate-600 hover:text-red-400 transition-colors"
+                >
+                  <Trash2 size={11} />
+                  Clear all history
+                </button>
+              </div>
             </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
+          )
+        })()}
       </div>
 
       {/* Input */}
@@ -242,9 +339,10 @@ export default function CopilotPage() {
           </button>
         </div>
         <div className="text-[10px] text-slate-700 text-center mt-2">
-          History saved locally · up to {MAX_STORED} messages · clear with ↺
+          History saved locally · up to {MAX_STORED} messages · browse with <History size={9} className="inline mb-0.5" />
         </div>
       </div>
     </div>
   )
 }
+

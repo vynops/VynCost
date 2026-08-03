@@ -18,6 +18,7 @@ export interface ServiceCost {
   amountUsd: number
   trend: number        // % change vs prior period, e.g. +12.5
   region: string
+  currency?: string    // billing currency code, e.g. 'SGD' — omitted means USD
 }
 
 export interface Recommendation {
@@ -90,9 +91,10 @@ export interface OverviewData {
   savingsApplied: number
   accountCount: number
   wasteCount: number
+  currency?: string      // shared billing currency when all accounts use the same one
   dailyTrend: CostPoint[]
   topServices: ServiceCost[]
-  byProvider: { provider: CloudProvider; amountUsd: number }[]
+  byProvider: { provider: CloudProvider; amountUsd: number; currency?: string }[]
   alerts: { id: string; severity: 'critical' | 'warning' | 'info'; message: string; time: string }[]
 }
 
@@ -353,3 +355,4 @@ export function mockExplorer(groupBy: string): { label: string; amountUsd: numbe
   }
   return data[groupBy] ?? data['service']
 }
+

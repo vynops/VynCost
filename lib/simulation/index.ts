@@ -40,11 +40,11 @@ function liveOciAccount(id: string) {
 }
 
 // ── Per-vendor routing (async — OCI routes to live API when creds present) ────
-async function serviceCosts(acct: { id: string; name: string; provider: CloudProvider }): Promise<ServiceCost[]> {
+async function serviceCosts(acct: { id: string; name: string; provider: CloudProvider }, days?: number): Promise<ServiceCost[]> {
   if (acct.provider === 'oci') {
     const live = liveOciAccount(acct.id)
     if (live) {
-      try { return await ociServiceCostsLive(live) } catch (e) { console.error('[OCI live] serviceCosts failed:', e) }
+      try { return await ociServiceCostsLive(live, days) } catch (e) { console.error('[OCI live] serviceCosts failed:', e) }
     }
   }
   switch (acct.provider) {
@@ -87,7 +87,7 @@ async function monthlyCost(acct: { id: string; provider: CloudProvider }): Promi
 
 // ── Overview ─────────────────────────────────────────────────────────────────
 export async function simulatedOverview(
-  accounts: { id: string; name: string; provider: CloudProvider }[]
+  accounts: { id: string; name: string; provider: CloudProvider; currency?: string }[]
 ): Promise<OverviewData> {
   const accts = accounts.length ? accounts : DEFAULT_ACCOUNTS
 
@@ -114,15 +114,25 @@ export async function simulatedOverview(
     .sort((a, b) => b.amountUsd - a.amountUsd)
     .slice(0, 12)
 
-  // By provider
+  // By provider — include per-provider billing currency from account records
   const providerTotals = new Map<CloudProvider, number>()
+  const providerCurrency = new Map<CloudProvider, string | undefined>()
   const monthlyCosts = await Promise.all(accts.map(acct => monthlyCost(acct)))
   accts.forEach((acct, i) => {
     providerTotals.set(acct.provider, (providerTotals.get(acct.provider) ?? 0) + monthlyCosts[i])
+    const cur = (acct as { currency?: string }).currency ?? 'USD'
+    const existing = providerCurrency.get(acct.provider)
+    // If multiple accounts for same provider use different currencies, mark mixed (undefined)
+    providerCurrency.set(acct.provider, existing === undefined || existing === cur ? cur : undefined)
   })
   const byProvider = Array.from(providerTotals.entries()).map(([provider, amountUsd]) => ({
     provider, amountUsd: parseFloat(amountUsd.toFixed(2)),
+    currency: providerCurrency.get(provider),
   }))
+
+  // Detect a shared billing currency across all providers (for stat cards / chart labels)
+  const allCurrencies = new Set(Array.from(providerCurrency.values()).filter(Boolean))
+  const sharedCurrency = allCurrencies.size === 1 ? [...allCurrencies][0] : undefined
 
   // Savings — sum real recs if available, else estimate from projected spend
   const recs = await simulatedRecommendations(accts)
@@ -138,7 +148,17 @@ export async function simulatedOverview(
   if (providerTotals.has('aws'))   alerts.push({ id: 'al-aws', severity: 'warning', message: 'EC2 spend up 18% vs last week in eu-west-1', time: '2h ago' })
   if (providerTotals.has('gcp'))   alerts.push({ id: 'al-gcp', severity: 'info',    message: 'BigQuery: 3 jobs scanned >500GB — consider partitioning', time: '6h ago' })
   if (providerTotals.has('azure')) alerts.push({ id: 'al-az',  severity: 'warning', message: 'Azure Data Factory budget 78% consumed with 9 days left', time: '1d ago' })
-  if (providerTotals.has('oci'))   alerts.push({ id: 'al-oci', severity: 'info',    message: 'OCI Autonomous DB CPU spike detected — auto-scale triggered', time: '4h ago' })
+  if (providerTotals.has('oci')) {
+    const hasLiveOci = accts.filter(a => a.provider === 'oci').some(a => liveOciAccount(a.id))
+    alerts.push({
+      id: 'al-oci',
+      severity: 'info',
+      message: hasLiveOci
+        ? 'OCI live cost data synced from Usage Reports API. Visit Anomalies for spike detection.'
+        : 'OCI Autonomous DB CPU spike detected — auto-scale triggered',
+      time: hasLiveOci ? 'live' : '4h ago',
+    })
+  }
 
   const wasteItems = await simulatedWaste(accts)
   return {
@@ -148,6 +168,7 @@ export async function simulatedOverview(
     savingsApplied,
     accountCount:  accts.length,
     wasteCount:    wasteItems.length,
+    currency:      sharedCurrency,
     dailyTrend:    daily,
     topServices,
     byProvider,
@@ -255,40 +276,56 @@ export async function simulatedAllocation(
 // ── Explorer ──────────────────────────────────────────────────────────────────
 export async function simulatedExplorer(
   accounts: { id: string; name: string; provider: CloudProvider }[],
-  groupBy: string
-): Promise<{ label: string; amountUsd: number; prev: number; region?: string; provider?: string }[]> {
+  groupBy: string,
+  days = 30
+): Promise<{ label: string; amountUsd: number; prev: number; currency?: string; region?: string; provider?: string }[]> {
   const accts = accounts.length ? accounts : DEFAULT_ACCOUNTS
-  const allServicesArrays = await Promise.all(accts.map(a => serviceCosts(a)))
+  const allServicesArrays = await Promise.all(accts.map(a => serviceCosts(a, days)))
   const allServices = allServicesArrays.flat()
 
   if (groupBy === 'service') {
-    const map = new Map<string, { amountUsd: number; provider: string }>()
+    const map = new Map<string, { amountUsd: number; provider: string; currency: string | undefined }>()
     for (const s of allServices) {
       const e = map.get(s.service)
-      if (e) e.amountUsd += s.amountUsd
-      else map.set(s.service, { amountUsd: s.amountUsd, provider: s.provider })
+      const cur = s.currency ?? 'USD'
+      if (e) {
+        e.amountUsd += s.amountUsd
+        // Mark as mixed (undefined) if this service spans multiple currencies
+        if (e.currency !== undefined && e.currency !== cur) e.currency = undefined
+      } else {
+        map.set(s.service, { amountUsd: s.amountUsd, provider: s.provider, currency: cur })
+      }
     }
     const rng = createRng(hashSeed('explorer:service:prev'))
     return Array.from(map.entries())
-      .map(([label, { amountUsd, provider }]) => ({
+      .map(([label, { amountUsd, provider, currency }]) => ({
         label, amountUsd: parseFloat(amountUsd.toFixed(2)),
         prev: parseFloat((amountUsd * seededRand(rng, 0.78, 1.15)).toFixed(2)),
         provider,
+        currency: currency === 'USD' ? undefined : currency,
       }))
       .sort((a, b) => b.amountUsd - a.amountUsd)
       .slice(0, 15)
   }
 
   if (groupBy === 'provider') {
-    const map = new Map<string, number>()
+    const map = new Map<string, { amountUsd: number; currency: string | undefined }>()
     for (const s of allServices) {
-      map.set(s.provider, (map.get(s.provider) ?? 0) + s.amountUsd)
+      const cur = s.currency ?? 'USD'
+      const e = map.get(s.provider)
+      if (e) {
+        e.amountUsd += s.amountUsd
+        if (e.currency !== undefined && e.currency !== cur) e.currency = undefined
+      } else {
+        map.set(s.provider, { amountUsd: s.amountUsd, currency: cur })
+      }
     }
     const rng = createRng(hashSeed('explorer:provider:prev'))
-    return Array.from(map.entries()).map(([label, amountUsd]) => ({
+    return Array.from(map.entries()).map(([label, { amountUsd, currency }]) => ({
       label: label.toUpperCase(), amountUsd: parseFloat(amountUsd.toFixed(2)),
       prev: parseFloat((amountUsd * seededRand(rng, 0.78, 1.15)).toFixed(2)),
       provider: label,
+      currency: currency === 'USD' ? undefined : currency,
     }))
   }
 
@@ -308,14 +345,26 @@ export async function simulatedExplorer(
   }
 
   if (groupBy === 'account') {
-    const rng = createRng(hashSeed('explorer:account:prev'))
-    const amounts = await Promise.all(accts.map(acct => monthlyCost(acct)))
-    return accts.map((acct, i) => ({
-      label: acct.name,
-      amountUsd: parseFloat(amounts[i].toFixed(2)),
-      prev: parseFloat((amounts[i] * seededRand(rng, 0.78, 1.15)).toFixed(2)),
-      provider: acct.provider,
-    })).sort((a, b) => b.amountUsd - a.amountUsd)
+    // Aggregate from allServices (already fetched with the correct days range)
+    // rather than monthlyCost() which always uses the current calendar month.
+    return accts.map(acct => {
+      const acctServices = allServices.filter(s => s.accountId === acct.id)
+      const amountUsd = parseFloat(acctServices.reduce((s, c) => s + c.amountUsd, 0).toFixed(2))
+      // Reconstruct prior-period total from per-service trend: prev = current / (1 + trend/100)
+      const prevTotal = acctServices.reduce((s, c) => {
+        const divisor = 1 + c.trend / 100
+        const prev = divisor !== 0 ? c.amountUsd / divisor : 0
+        return s + (isFinite(prev) && prev >= 0 ? prev : 0)
+      }, 0)
+      const currency = acctServices.find(c => c.currency)?.currency
+      return {
+        label: acct.name,
+        amountUsd,
+        prev: parseFloat(prevTotal.toFixed(2)),
+        provider: acct.provider,
+        currency: currency === 'USD' ? undefined : currency,
+      }
+    }).sort((a, b) => b.amountUsd - a.amountUsd)
   }
 
   return []
@@ -549,3 +598,4 @@ export async function simulatedRiCoverage(
 
   return allItems.sort((a, b) => b.wastedMonthly - a.wastedMonthly)
 }
+
