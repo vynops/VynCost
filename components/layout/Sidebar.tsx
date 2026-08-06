@@ -40,7 +40,7 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    section: 'Assistant',
+    section: 'AIOPs',
     items: [
       { href: '/copilot', icon: Sparkles, label: 'AI Copilot' },
     ],
