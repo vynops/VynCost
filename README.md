@@ -484,29 +484,21 @@ VynCost/
 
 ---
 
+## Part of the VynOps Suite
+
+| Product | Purpose | Repo |
+|---|---|---|
+| **VynOps** | Kubernetes operations platform | [vynops/VynOps](https://github.com/vynops/VynOps) |
+| **VynAI** | Ollama fleet manager and AI gateway | [vynops/VynAI](https://github.com/vynops/VynAI) |
+| **VynCost** | Cloud cost visibility | [vynops/VynCost](https://github.com/vynops/VynCost) |
+| **VynDB** | Database operations | [vynops/VynDB](https://github.com/vynops/VynDB) |
+| **VynDC** | Data center management | [vynops/VynDC](https://github.com/vynops/VynDC) |
+| **VynCICD** | CI/CD pipeline management | [vynops/VynCICD](https://github.com/vynops/VynCICD) |
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE)
 
 ---
-
-## Part of the VynOps Platform
-
-VynCost is one component of the [VynOps](https://github.com/vynops) open-source platform engineering suite.
-
-| Project | Status | Description |
-|---|---|---|
-| [VynOps](https://github.com/vynops/VynOps) | Active | AI-native Kubernetes operations dashboard |
-| [VynAI](https://github.com/vynops/VynAI) | Active | Ollama fleet management & GPU monitoring |
-| [VynCost](https://github.com/vynops/VynCost) | **Active** | Cloud cost management ← *this project* |
-| [VynDB](https://github.com/vynops/VynDB) | Planned | Database operations & query management |
-| [VynDC](https://github.com/vynops/VynDC) | Planned | Container & Docker management |
-| [VynCICD](https://github.com/vynops/VynCICD) | Planned | CI/CD pipeline management |
-
----
-
-<div align="center">
-
-**[vynops.io](https://vynops.io)** · MIT License · Open Source
-
-</div>
