@@ -6,6 +6,20 @@ import type { CloudProvider } from '@/lib/mock-data'
 import { loadSettings } from '@/lib/settings-store'
 import { recordUsage } from '@/lib/copilot-usage'
 
+type ChatMessage = { role: 'user' | 'assistant'; content: string }
+
+type AiResult = { reply: string; promptTokens?: number; completionTokens?: number }
+
+type ProviderResponse = {
+  error?: { message?: string }
+  message?: string
+  content?: Array<{ type?: string; text?: string }>
+  usage?: { input_tokens?: number; output_tokens?: number; prompt_tokens?: number; completion_tokens?: number }
+  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+  choices?: Array<{ message?: { content?: string } }>
+}
+
 async function buildContext(): Promise<string> {
   const accounts = listAccounts()
   const acctArg = accounts.map(a => ({ id: a.id, name: a.name, provider: a.provider as CloudProvider }))
@@ -47,13 +61,14 @@ export async function POST(req: NextRequest) {
   if (!messages?.length) return NextResponse.json({ error: 'No messages' }, { status: 400 })
 
   const settings = loadSettings()
-  const apiKey = settings.groqApiKey || process.env.GROQ_API_KEY || ''
+  const provider = settings.aiProvider || 'groq'
+  const apiKey = settings.aiApiKey || (provider === 'groq' ? settings.groqApiKey || process.env.GROQ_API_KEY : '') || ''
   const model = settings.aiModel || 'llama-3.3-70b-versatile'
 
-  if (!apiKey) {
+  if (!apiKey && !(provider === 'custom' && settings.aiBaseUrl)) {
     // Demo mode — deterministic responses
     const lastMsg = messages[messages.length - 1]?.content?.toLowerCase() || ''
-    let reply = "I'm VynCost AI Copilot. Add your Groq API key in **Settings → AI Copilot** to enable real AI responses."
+    let reply = "I'm VynCost AI Copilot. Add an API key in **Settings → AI Copilot** to enable real AI responses."
     if (lastMsg.includes('saving') || lastMsg.includes('save') || lastMsg.includes('optim')) {
       reply = "Based on your current infrastructure, I've identified **$1,247/month** in potential savings. The top 3 actions are:\n\n1. **Rightsize prod-app-server-01** (EC2 m5.2xlarge → m5.large): saves $206/mo — CPU avg is only 4.2%\n2. **Purchase Compute Savings Plan** for your stable EC2 workload: saves $157/mo\n3. **Delete orphaned EBS snapshots and unattached volumes**: saves ~$75/mo with zero risk\n\nTotal risk-free savings (Low risk only): **$438/month**."
     } else if (lastMsg.includes('spike') || lastMsg.includes('increase') || lastMsg.includes('why')) {
@@ -65,21 +80,117 @@ export async function POST(req: NextRequest) {
   }
 
   const context = await buildContext()
-  const client = new Groq({ apiKey })
+  const chatMessages = messages.map((m: { role: string; content: string }) => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content,
+  })) as ChatMessage[]
 
-  const completion = await client.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: context },
-      ...messages.map((m: { role: string; content: string }) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-    ],
-    max_tokens: 512,
-    temperature: 0.3,
+  try {
+    const result = await requestAi({ provider, apiKey, model, baseUrl: settings.aiBaseUrl, context, messages: chatMessages })
+    if (result.promptTokens !== undefined || result.completionTokens !== undefined) {
+      recordUsage(result.promptTokens ?? 0, result.completionTokens ?? 0)
+    }
+    return NextResponse.json({ reply: result.reply })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'AI provider request failed'
+    return NextResponse.json({ error: message }, { status: 502 })
+  }
+}
+
+async function requestAi({
+  provider,
+  apiKey,
+  model,
+  baseUrl,
+  context,
+  messages,
+}: {
+  provider: string
+  apiKey: string
+  model: string
+  baseUrl: string
+  context: string
+  messages: ChatMessage[]
+}): Promise<AiResult> {
+  if (provider === 'groq') {
+    const client = new Groq({ apiKey })
+    const completion = await client.chat.completions.create({
+      model,
+      messages: [{ role: 'system', content: context }, ...messages],
+      max_tokens: 512,
+      temperature: 0.3,
+    })
+    return {
+      reply: completion.choices[0]?.message?.content || 'No response generated.',
+      promptTokens: completion.usage?.prompt_tokens,
+      completionTokens: completion.usage?.completion_tokens,
+    }
+  }
+
+  if (provider === 'anthropic') {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 512,
+        system: context,
+        messages: messages.map(message => ({ role: message.role === 'assistant' ? 'assistant' : 'user', content: message.content })),
+      }),
+    })
+    const data = await readProviderResponse(response)
+    const content = Array.isArray(data.content) ? data.content.find(item => item.type === 'text') : null
+    return {
+      reply: content?.text || 'No response generated.',
+      promptTokens: data.usage?.input_tokens,
+      completionTokens: data.usage?.output_tokens,
+    }
+  }
+
+  if (provider === 'google') {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: context }] },
+        contents: messages.map(message => ({ role: message.role === 'assistant' ? 'model' : 'user', parts: [{ text: message.content }] })),
+        generationConfig: { maxOutputTokens: 512, temperature: 0.3 },
+      }),
+    })
+    const data = await readProviderResponse(response)
+    return {
+      reply: data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('') || 'No response generated.',
+      promptTokens: data.usageMetadata?.promptTokenCount,
+      completionTokens: data.usageMetadata?.candidatesTokenCount,
+    }
+  }
+
+  const endpoint = `${(baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'system', content: context }, ...messages],
+      max_tokens: 512,
+      temperature: 0.3,
+    }),
   })
+  const data = await readProviderResponse(response)
+  return {
+    reply: data.choices?.[0]?.message?.content || 'No response generated.',
+    promptTokens: data.usage?.prompt_tokens,
+    completionTokens: data.usage?.completion_tokens,
+  }
+}
 
-  const usage = completion.usage
-  if (usage) recordUsage(usage.prompt_tokens, usage.completion_tokens)
-
-  const reply = completion.choices[0]?.message?.content || 'No response generated.'
-  return NextResponse.json({ reply })
+async function readProviderResponse(response: Response): Promise<ProviderResponse> {
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.error?.message || data.message || `AI provider returned HTTP ${response.status}`)
+  }
+  return data
 }

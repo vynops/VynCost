@@ -168,7 +168,7 @@ export default function CopilotPage() {
           </div>
           <div>
             <div className="text-sm font-bold text-white">VynCost AI Copilot</div>
-            <div className="text-xs text-slate-500">Powered by Groq Llama · full cost context</div>
+            <div className="text-xs text-slate-500">Multi-provider AI · full cost context</div>
           </div>
         </div>
         <div className="flex items-center gap-2">

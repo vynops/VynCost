@@ -10,11 +10,24 @@ export interface AppSettings {
   gpuAlertEnabled: boolean
   wasteAutoDetect: boolean
   slackWebhookUrl: string
+  teamsWebhookUrl: string
+  customWebhookUrl: string
   emailAlerts: string
+  alertEmailEnabled: boolean
+  alertRecipients: string
+  smtpHost: string
+  smtpPort: number
+  smtpUser: string
+  smtpPassword: string
+  smtpFrom: string
+  notificationTeam: string
   costSpikeThresholdPct: number
   defaultGroupBy: string
   // AI Copilot
+  aiProvider: 'groq' | 'openai' | 'anthropic' | 'google' | 'custom'
   aiModel: string
+  aiApiKey: string
+  aiBaseUrl: string
   groqApiKey: string
 }
 
@@ -24,10 +37,23 @@ const DEFAULTS: AppSettings = {
   gpuAlertEnabled: true,
   wasteAutoDetect: true,
   slackWebhookUrl: '',
+  teamsWebhookUrl: '',
+  customWebhookUrl: '',
   emailAlerts: '',
+  alertEmailEnabled: false,
+  alertRecipients: '',
+  smtpHost: '',
+  smtpPort: 587,
+  smtpUser: '',
+  smtpPassword: '',
+  smtpFrom: '',
+  notificationTeam: '',
   costSpikeThresholdPct: 20,
   defaultGroupBy: 'service',
+  aiProvider: 'groq',
   aiModel: 'llama-3.3-70b-versatile',
+  aiApiKey: '',
+  aiBaseUrl: '',
   groqApiKey: '',
 }
 

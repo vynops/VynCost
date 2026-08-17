@@ -1,7 +1,7 @@
 'use client'
 import useSWR from 'swr'
 import { useState } from 'react'
-import { Plus, Trash2, Pencil, CheckCircle, AlertCircle, Clock, X, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Plus, Trash2, Pencil, CheckCircle, AlertCircle, Clock, X, Eye, EyeOff, Loader2, Mail, Users, Webhook, Send } from 'lucide-react'
 import { providerLabel, providerBg } from '@/lib/utils'
 import type { CloudAccount, CloudProvider } from '@/lib/account-store'
 import type { AppSettings } from '@/lib/settings-store'
@@ -179,12 +179,42 @@ function AccountFormModal({
   )
 }
 
-const GROQ_MODELS = [
-  { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (recommended)' },
-  { value: 'llama-3.1-70b-versatile', label: 'Llama 3.1 70B' },
-  { value: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (fast)' },
-  { value: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B (32k context)' },
-  { value: 'gemma2-9b-it', label: 'Gemma 2 9B' },
+const AI_PROVIDERS = [
+  {
+    value: 'groq', label: 'Groq', keyLabel: 'Groq API Key', placeholder: 'gsk_...', defaultModel: 'llama-3.3-70b-versatile',
+    models: [
+      { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (recommended)' },
+      { value: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (fast)' },
+      { value: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B (32k context)' },
+      { value: 'gemma2-9b-it', label: 'Gemma 2 9B' },
+    ],
+  },
+  {
+    value: 'openai', label: 'OpenAI', keyLabel: 'OpenAI API Key', placeholder: 'sk-...', defaultModel: 'gpt-4o-mini',
+    models: [
+      { value: 'gpt-4o', label: 'GPT-4o' },
+      { value: 'gpt-4o-mini', label: 'GPT-4o Mini (fast)' },
+      { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+    ],
+  },
+  {
+    value: 'anthropic', label: 'Anthropic (Claude)', keyLabel: 'Anthropic API Key', placeholder: 'sk-ant-...', defaultModel: 'claude-3-5-sonnet-latest',
+    models: [
+      { value: 'claude-3-5-sonnet-latest', label: 'Claude 3.5 Sonnet' },
+      { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku (fast)' },
+    ],
+  },
+  {
+    value: 'google', label: 'Google (Gemini)', keyLabel: 'Gemini API Key', placeholder: 'AIza...', defaultModel: 'gemini-2.0-flash',
+    models: [
+      { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+      { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+      { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+    ],
+  },
+  {
+    value: 'custom', label: 'Custom / Self-Hosted', keyLabel: 'API Key', placeholder: 'Optional API key', defaultModel: '', models: [],
+  },
 ]
 
 export default function SettingsPage() {
@@ -192,7 +222,15 @@ export default function SettingsPage() {
   const [editingAccount, setEditingAccount] = useState<Partial<CloudAccount> | null>(null)
   const [savingSettings, setSavingSettings] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [showGroqKey, setShowGroqKey] = useState(false)
+  const [showAiKey, setShowAiKey] = useState(false)
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false)
+  const [testingChannel, setTestingChannel] = useState<string | null>(null)
+  const [channelTests, setChannelTests] = useState<Record<string, { ok: boolean; message: string }>>({})
+  const [testEmailTo, setTestEmailTo] = useState('')
+  const [testingEmail, setTestingEmail] = useState(false)
+  const [emailTest, setEmailTest] = useState<{ ok: boolean; message: string } | null>(null)
+  const [testingAi, setTestingAi] = useState(false)
+  const [aiTest, setAiTest] = useState<{ ok: boolean; message: string; latencyMs?: number } | null>(null)
 
   const { data: accounts = [], mutate: mutateAccounts } = useSWR<Partial<CloudAccount>[]>('/api/accounts', fetcher)
   const { data: settings, mutate: mutateSettings } = useSWR<AppSettings & { adminEmail?: string }>('/api/settings', fetcher)
@@ -201,6 +239,71 @@ export default function SettingsPage() {
 
   const merged = { ...settings, ...localSettings }
   const setS = (k: string, v: string | number | boolean) => setLocalSettings(prev => ({ ...prev, [k]: v }))
+
+  async function testNotification(channel: 'slackWebhookUrl' | 'teamsWebhookUrl' | 'customWebhookUrl') {
+    const url = String(merged[channel] || '').trim()
+    if (!url) {
+      setChannelTests(prev => ({ ...prev, [channel]: { ok: false, message: 'Enter a URL first' } }))
+      return
+    }
+    setTestingChannel(channel)
+    try {
+      const response = await fetch('/api/settings/test-notification', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel, url }),
+      })
+      const data = await response.json() as { ok?: boolean; message?: string; error?: string }
+      setChannelTests(prev => ({ ...prev, [channel]: { ok: response.ok && data.ok === true, message: data.message || data.error || 'Test failed' } }))
+    } catch (error) {
+      setChannelTests(prev => ({ ...prev, [channel]: { ok: false, message: error instanceof Error ? error.message : 'Test failed' } }))
+    } finally {
+      setTestingChannel(null)
+    }
+  }
+
+  async function testEmail() {
+    if (!testEmailTo.trim()) {
+      setEmailTest({ ok: false, message: 'Enter a recipient email first' })
+      return
+    }
+    setTestingEmail(true)
+    try {
+      const response = await fetch('/api/settings/test-email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: testEmailTo.trim() }),
+      })
+      const data = await response.json() as { ok?: boolean; message?: string }
+      setEmailTest({ ok: response.ok && data.ok === true, message: data.message || 'Email test failed' })
+    } catch (error) {
+      setEmailTest({ ok: false, message: error instanceof Error ? error.message : 'Email test failed' })
+    } finally {
+      setTestingEmail(false)
+    }
+  }
+
+  async function testAiConnection() {
+    const provider = merged.aiProvider || 'groq'
+    const apiKey = merged.aiApiKey || (provider === 'groq' ? merged.groqApiKey : '')
+    if (provider !== 'custom' && !apiKey) {
+      setAiTest({ ok: false, message: 'Enter an API key first' })
+      return
+    }
+    if (provider === 'custom' && !merged.aiBaseUrl) {
+      setAiTest({ ok: false, message: 'Enter a custom base URL first' })
+      return
+    }
+    setTestingAi(true)
+    try {
+      const response = await fetch('/api/copilot/test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, apiKey, model: merged.aiModel, baseUrl: merged.aiBaseUrl }),
+      })
+      const data = await response.json() as { ok?: boolean; message?: string; latencyMs?: number }
+      setAiTest({ ok: response.ok && data.ok === true, message: data.message || 'AI connection test failed', latencyMs: data.latencyMs })
+    } catch (error) {
+      setAiTest({ ok: false, message: error instanceof Error ? error.message : 'AI connection test failed' })
+    } finally {
+      setTestingAi(false)
+    }
+  }
 
   async function saveSettings() {
     setSavingSettings(true)
@@ -360,11 +463,89 @@ export default function SettingsPage() {
                 <div className="text-[11px] text-slate-600 mt-1">Alert when any service spikes by this %</div>
               </div>
             </div>
-            <div>
-              <label className="text-xs text-slate-400 font-medium block mb-1">Slack Webhook URL</label>
-              <input type="url" value={merged.slackWebhookUrl || ''} onChange={e => setS('slackWebhookUrl', e.target.value)}
-                placeholder="https://hooks.slack.com/services/..."
-                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+            <div className="space-y-3 border-t border-slate-800 pt-4">
+              <div className="flex items-center gap-2">
+                <Webhook size={14} className="text-orange-400" />
+                <div className="text-xs font-bold text-white">Notification Channels</div>
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="text-xs text-slate-400 font-medium">Slack Webhook URL</label>
+                  <button type="button" onClick={() => testNotification('slackWebhookUrl')} disabled={testingChannel === 'slackWebhookUrl'}
+                    className="ml-auto flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-700 text-[10px] text-slate-300 hover:border-orange-500/40 disabled:opacity-50">
+                    {testingChannel === 'slackWebhookUrl' ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />} Test
+                  </button>
+                </div>
+                <input type="url" value={merged.slackWebhookUrl || ''} onChange={e => setS('slackWebhookUrl', e.target.value)} placeholder="https://hooks.slack.com/services/..."
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+                {channelTests.slackWebhookUrl && <div className={`text-[11px] mt-1 ${channelTests.slackWebhookUrl.ok ? 'text-green-400' : 'text-red-400'}`}>{channelTests.slackWebhookUrl.message}</div>}
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="text-xs text-slate-400 font-medium">Microsoft Teams Webhook URL</label>
+                  <button type="button" onClick={() => testNotification('teamsWebhookUrl')} disabled={testingChannel === 'teamsWebhookUrl'}
+                    className="ml-auto flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-700 text-[10px] text-slate-300 hover:border-orange-500/40 disabled:opacity-50">
+                    {testingChannel === 'teamsWebhookUrl' ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />} Test
+                  </button>
+                </div>
+                <input type="url" value={merged.teamsWebhookUrl || ''} onChange={e => setS('teamsWebhookUrl', e.target.value)} placeholder="https://outlook.webhook.office.com/webhookb2/..."
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+                {channelTests.teamsWebhookUrl && <div className={`text-[11px] mt-1 ${channelTests.teamsWebhookUrl.ok ? 'text-green-400' : 'text-red-400'}`}>{channelTests.teamsWebhookUrl.message}</div>}
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="text-xs text-slate-400 font-medium">Custom Webhook URL</label>
+                  <button type="button" onClick={() => testNotification('customWebhookUrl')} disabled={testingChannel === 'customWebhookUrl'}
+                    className="ml-auto flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-700 text-[10px] text-slate-300 hover:border-orange-500/40 disabled:opacity-50">
+                    {testingChannel === 'customWebhookUrl' ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />} Test
+                  </button>
+                </div>
+                <input type="url" value={merged.customWebhookUrl || ''} onChange={e => setS('customWebhookUrl', e.target.value)} placeholder="https://your-endpoint.example/alerts"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+                <div className="text-[11px] text-slate-600 mt-1">Receives alert details as a JSON POST request.</div>
+                {channelTests.customWebhookUrl && <div className={`text-[11px] mt-1 ${channelTests.customWebhookUrl.ok ? 'text-green-400' : 'text-red-400'}`}>{channelTests.customWebhookUrl.message}</div>}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-400 font-medium block mb-1"><Mail size={11} className="inline mr-1" />Email Alert Recipients</label>
+                  <input type="email" value={merged.emailAlerts || ''} onChange={e => setS('emailAlerts', e.target.value)}
+                    placeholder="finops@example.com, team@example.com"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+                  <div className="text-[11px] text-slate-600 mt-1">Use commas for multiple recipients.</div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 font-medium block mb-1"><Users size={11} className="inline mr-1" />Notification Team</label>
+                  <input type="text" value={merged.notificationTeam || ''} onChange={e => setS('notificationTeam', e.target.value)}
+                    placeholder="FinOps / Platform Operations"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+                  <div className="text-[11px] text-slate-600 mt-1">Team or on-call group attached to notifications.</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input value={merged.smtpHost || ''} onChange={e => setS('smtpHost', e.target.value)} placeholder="SMTP host (e.g. smtp.gmail.com)"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+                <input type="number" value={merged.smtpPort ?? 587} onChange={e => setS('smtpPort', parseInt(e.target.value, 10))} placeholder="SMTP port"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+                <input value={merged.smtpUser || ''} onChange={e => setS('smtpUser', e.target.value)} placeholder="SMTP username"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+                <div className="relative">
+                  <input type={showSmtpPassword ? 'text' : 'password'} value={merged.smtpPassword || ''} onChange={e => setS('smtpPassword', e.target.value)} placeholder="SMTP password"
+                    className="w-full px-3 py-2 pr-10 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+                  <button type="button" onClick={() => setShowSmtpPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white">
+                    {showSmtpPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+                  </button>
+                </div>
+                <input value={merged.smtpFrom || ''} onChange={e => setS('smtpFrom', e.target.value)} placeholder="From address"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="email" value={testEmailTo} onChange={e => setTestEmailTo(e.target.value)} placeholder="Send test email to..."
+                  className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+                <button type="button" onClick={testEmail} disabled={testingEmail} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-700 text-xs text-slate-300 hover:border-orange-500/40 disabled:opacity-50">
+                  {testingEmail ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Test Email
+                </button>
+              </div>
+              {emailTest && <div className={`text-[11px] ${emailTest.ok ? 'text-green-400' : 'text-red-400'}`}>{emailTest.message}</div>}
             </div>
             <div className="flex items-center justify-between py-2 border-t border-slate-800">
               <div>
@@ -393,40 +574,71 @@ export default function SettingsPage() {
             <span className="text-base">🤖</span>
             <h2 className="text-sm font-bold text-white">AI Copilot</h2>
           </div>
-          <p className="text-xs text-slate-500 mb-4">Configure the Groq-powered AI model used in the Copilot chat. Get a free API key at <a href="https://console.groq.com" target="_blank" rel="noopener noreferrer" className="text-orange-400 hover:underline">console.groq.com</a>.</p>
+          <p className="text-xs text-slate-500 mb-4">Choose an AI provider for Copilot. Groq, OpenAI, Anthropic, Google Gemini, and OpenAI-compatible self-hosted endpoints are supported.</p>
           <div className="space-y-4">
             <div>
-              <label className="text-xs text-slate-400 font-medium block mb-1">Groq API Key</label>
+              <label className="text-xs text-slate-400 font-medium block mb-1">AI Provider</label>
+              <select
+                value={merged.aiProvider || 'groq'}
+                onChange={e => {
+                  const provider = AI_PROVIDERS.find(p => p.value === e.target.value) || AI_PROVIDERS[0]
+                  setS('aiProvider', provider.value)
+                  setS('aiModel', provider.defaultModel)
+                  setS('aiApiKey', '')
+                }}
+                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60">
+                {AI_PROVIDERS.map(provider => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
+              </select>
+            </div>
+            {(() => {
+              const provider = AI_PROVIDERS.find(p => p.value === merged.aiProvider) || AI_PROVIDERS[0]
+              const models = provider.models
+              return <>
+            <div>
+              <label className="text-xs text-slate-400 font-medium block mb-1">{provider.keyLabel}</label>
               <div className="relative">
                 <input
-                  type={showGroqKey ? 'text' : 'password'}
-                  value={merged.groqApiKey ?? ''}
-                  onChange={e => setS('groqApiKey', e.target.value)}
-                  placeholder="gsk_..."
+                  type={showAiKey ? 'text' : 'password'}
+                  value={merged.aiApiKey || (merged.aiProvider === 'groq' ? merged.groqApiKey : '')}
+                  onChange={e => setS('aiApiKey', e.target.value)}
+                  placeholder={provider.placeholder}
                   className="w-full px-3 py-2 pr-10 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60 font-mono"
                 />
-                <button type="button" onClick={() => setShowGroqKey(v => !v)}
+                <button type="button" onClick={() => setShowAiKey(v => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white">
-                  {showGroqKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  {showAiKey ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
-              <div className="text-[11px] text-slate-600 mt-1">Stored in settings. Overrides GROQ_API_KEY env var if set.</div>
+              <div className="text-[11px] text-slate-600 mt-1">Stored locally in settings. Environment variables remain supported for Groq.</div>
             </div>
             <div>
               <label className="text-xs text-slate-400 font-medium block mb-1">AI Model</label>
-              <select
-                value={merged.aiModel || 'llama-3.3-70b-versatile'}
-                onChange={e => setS('aiModel', e.target.value)}
+              {models.length > 0 ? <select value={merged.aiModel || provider.defaultModel} onChange={e => setS('aiModel', e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60">
-                {GROQ_MODELS.map(m => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
-                ))}
-              </select>
+                {models.map(model => <option key={model.value} value={model.value}>{model.label}</option>)}
+              </select> : <input value={merged.aiModel || ''} onChange={e => setS('aiModel', e.target.value)} placeholder="your-model-id"
+                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60 font-mono" />}
             </div>
+            {provider.value === 'custom' && <div>
+              <label className="text-xs text-slate-400 font-medium block mb-1">OpenAI-Compatible Base URL</label>
+              <input value={merged.aiBaseUrl || ''} onChange={e => setS('aiBaseUrl', e.target.value)} placeholder="https://api.example.com/v1"
+                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60 font-mono" />
+            </div>}
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={testAiConnection} disabled={testingAi}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-700 text-xs text-slate-300 hover:border-orange-500/40 disabled:opacity-50">
+                {testingAi ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Test Connection
+              </button>
+              {aiTest && <span className={`text-[11px] ${aiTest.ok ? 'text-green-400' : 'text-red-400'}`}>
+                {aiTest.message}{aiTest.latencyMs !== undefined ? ` (${aiTest.latencyMs}ms)` : ''}
+              </span>}
+            </div>
+              </>
+            })()}
             {copilotUsage
               ? <div className="border-t border-slate-800 pt-4 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-400">Today's Usage</span>
+                    <span className="text-xs font-medium text-slate-400">Today&apos;s Usage</span>
                     <button type="button" onClick={() => mutateCopilotUsage()} className="text-[10px] text-slate-600 hover:text-slate-400">Refresh</button>
                   </div>
                   <div className="grid grid-cols-3 gap-2">

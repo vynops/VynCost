@@ -9,10 +9,12 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@types/nodemailer": "^8.0.1",
     "groq-sdk": "^1.3.0",
     "jose": "^6.2.3",
     "lucide-react": "^1.22.0",
     "next": "16.2.9",
+    "nodemailer": "^9.0.5",
     "oci-common": "^2.136.1",
     "oci-core": "^2.136.1",
     "oci-identity": "^2.136.1",
