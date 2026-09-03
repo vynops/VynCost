@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   }
 
   const user = findUserByEmail(email)
-  if (!user || !verifyPassword(password, user.passwordHash)) {
+  if (!user || user.active === false || !verifyPassword(password, user.passwordHash)) {
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
   }
 

@@ -15,7 +15,7 @@ const WELCOME: Message = {
   role: 'assistant',
   content: "Hi! I'm your VynCost AI Copilot. I have full visibility into your cloud spend, waste, and optimization opportunities.\n\nAsk me anything — \"what caused last week's spike?\", \"how much can I save this month?\", or \"which team is overspending?\"",
   time: 'now',
-  date: new Date().toLocaleDateString(),
+  date: '',
 }
 
 const SUGGESTIONS = [

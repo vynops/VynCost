@@ -20,6 +20,9 @@ type ProviderResponse = {
   choices?: Array<{ message?: { content?: string } }>
 }
 
+const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b'
+const RETIRED_GROQ_MODELS = new Set(['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'])
+
 async function buildContext(): Promise<string> {
   const accounts = listAccounts()
   const acctArg = accounts.map(a => ({ id: a.id, name: a.name, provider: a.provider as CloudProvider }))
@@ -63,7 +66,10 @@ export async function POST(req: NextRequest) {
   const settings = loadSettings()
   const provider = settings.aiProvider || 'groq'
   const apiKey = settings.aiApiKey || (provider === 'groq' ? settings.groqApiKey || process.env.GROQ_API_KEY : '') || ''
-  const model = settings.aiModel || 'llama-3.3-70b-versatile'
+  const configuredModel = settings.aiModel?.trim()
+  const model = provider === 'groq' && (!configuredModel || RETIRED_GROQ_MODELS.has(configuredModel))
+    ? GROQ_DEFAULT_MODEL
+    : configuredModel || 'gpt-4o-mini'
 
   if (!apiKey && !(provider === 'custom' && settings.aiBaseUrl)) {
     // Demo mode — deterministic responses

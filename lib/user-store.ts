@@ -14,6 +14,7 @@ export interface User {
   email: string
   name: string
   role: UserRole
+  active: boolean
   passwordHash: string   // hex: salt:iterations:hash
   createdAt: string
   lastLoginAt?: string
@@ -62,6 +63,7 @@ export function ensureAdminExists(): void {
     email:        adminEmail,
     name:         adminName,
     role:         'admin',
+    active:       true,
     passwordHash: hashPassword(adminPassword),
     createdAt:    new Date().toISOString(),
   }
@@ -93,6 +95,7 @@ export function createUser(data: { email: string; name: string; role: UserRole; 
     email:        data.email,
     name:         data.name,
     role:         data.role,
+    active:       true,
     passwordHash: hashPassword(data.password),
     createdAt:    new Date().toISOString(),
   }
@@ -101,13 +104,20 @@ export function createUser(data: { email: string; name: string; role: UserRole; 
   return safe
 }
 
-export function updateUser(id: string, data: Partial<{ name: string; role: UserRole; password: string }>): Omit<User, 'passwordHash'> | null {
+export function updateUser(id: string, data: Partial<{ name: string; role: UserRole; password: string; active: boolean }>): Omit<User, 'passwordHash'> | null {
   const users = readUsers()
   const idx = users.findIndex(u => u.id === id)
   if (idx === -1) return null
+  const user = users[idx]
+  const removesActiveAdmin = user.role === 'admin' && user.active !== false &&
+    (data.role !== undefined && data.role !== 'admin' || data.active === false)
+  if (removesActiveAdmin && users.filter(candidate => candidate.role === 'admin' && candidate.active !== false).length === 1) {
+    throw new Error('Cannot deactivate or demote the last active admin')
+  }
   if (data.name)     users[idx].name = data.name
   if (data.role)     users[idx].role = data.role
   if (data.password) users[idx].passwordHash = hashPassword(data.password)
+  if (data.active !== undefined) users[idx].active = data.active
   writeUsers(users)
   const { passwordHash: _, ...safe } = users[idx]
   return safe
@@ -118,7 +128,7 @@ export function deleteUser(id: string): boolean {
   const filtered = users.filter(u => u.id !== id)
   if (filtered.length === users.length) return false
   // Prevent deleting last admin
-  const adminCount = filtered.filter(u => u.role === 'admin').length
+  const adminCount = filtered.filter(u => u.role === 'admin' && u.active !== false).length
   if (adminCount === 0) throw new Error('Cannot delete the last admin')
   writeUsers(filtered)
   return true

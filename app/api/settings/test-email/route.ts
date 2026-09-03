@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
-import { requireRole } from '@/lib/auth'
+import { requireRole } from '@/lib/auth-server'
 import { loadSettings } from '@/lib/settings-store'
 
 export async function POST(req: NextRequest) {

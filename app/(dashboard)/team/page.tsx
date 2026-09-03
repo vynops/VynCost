@@ -1,12 +1,12 @@
 'use client'
 import useSWR from 'swr'
 import { useState } from 'react'
-import { Plus, Trash2, Pencil, X, Check, Shield, Eye, Edit3, Crown, Loader2 } from 'lucide-react'
+import { Plus, Trash2, Pencil, X, Check, Shield, Eye, EyeOff, Edit3, Crown, Loader2, KeyRound, Power, PowerOff } from 'lucide-react'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 type Role = 'admin' | 'editor' | 'viewer'
-interface User { id: string; email: string; name: string; role: Role; createdAt: string; lastLoginAt?: string }
+interface User { id: string; email: string; name: string; role: Role; active?: boolean; createdAt: string; lastLoginAt?: string }
 
 const ROLE_META: Record<Role, { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; color: string; desc: string }> = {
   admin:  { label: 'Admin',  icon: Crown,  color: 'bg-orange-500/10 text-orange-400 border-orange-500/20', desc: 'Full access — accounts, settings, users' },
@@ -21,6 +21,24 @@ function RoleBadge({ role }: { role: Role }) {
     <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border ${m.color}`}>
       <Icon size={10} /> {m.label}
     </span>
+  )
+}
+
+function PasswordInput({ value, onChange, placeholder, autoComplete }: {
+  value: string; onChange: (value: string) => void; placeholder: string; autoComplete: string
+}) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <div className="relative">
+      <input type={visible ? 'text' : 'password'} value={value} onChange={event => onChange(event.target.value)}
+        placeholder={placeholder} autoComplete={autoComplete} required
+        className="w-full px-3 py-2 pr-10 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+      <button type="button" onClick={() => setVisible(current => !current)}
+        title={visible ? 'Hide password' : 'Show password'} aria-label={visible ? 'Hide password' : 'Show password'}
+        className="absolute inset-y-0 right-0 px-3 text-slate-500 hover:text-white">
+        {visible ? <EyeOff size={15} /> : <Eye size={15} />}
+      </button>
+    </div>
   )
 }
 
@@ -59,9 +77,14 @@ function InviteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           ].map(f => (
             <div key={f.key}>
               <label className="text-xs text-slate-400 font-medium block mb-1">{f.label}</label>
-              <input type={f.type} value={form[f.key as keyof typeof form]}
-                onChange={e => set(f.key, e.target.value)} placeholder={f.placeholder} required
-                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+              {f.type === 'password' ? (
+                <PasswordInput value={form[f.key as keyof typeof form]} onChange={value => set(f.key, value)}
+                  placeholder={f.placeholder} autoComplete={f.key === 'password' ? 'new-password' : 'new-password'} />
+              ) : (
+                <input type={f.type} value={form[f.key as keyof typeof form]}
+                  onChange={e => set(f.key, e.target.value)} placeholder={f.placeholder} required
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60" />
+              )}
             </div>
           ))}
 
@@ -150,9 +173,67 @@ function EditRoleModal({ user, onClose, onSaved }: { user: User; onClose: () => 
   )
 }
 
+function ChangePasswordModal({ user, onClose }: { user: Pick<User, 'id'>; onClose: () => void }) {
+  const [form, setForm] = useState({ currentPassword: '', password: '', confirm: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const set = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }))
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    if (form.password.length < 8) { setError('New password must be at least 8 characters'); return }
+    if (form.password !== form.confirm) { setError('New passwords do not match'); return }
+
+    setSaving(true)
+    setError('')
+    const response = await fetch(`/api/users/${user.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword: form.currentPassword, password: form.password }),
+    })
+    setSaving(false)
+    if (response.ok) onClose()
+    else {
+      const data = await response.json()
+      setError(data.error || 'Failed to change password')
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[#111827] border border-slate-700 rounded-2xl p-6 w-full max-w-sm">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-sm font-bold text-white">Change Password</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-white" aria-label="Close change password dialog"><X size={16} /></button>
+        </div>
+        <form onSubmit={submit} className="space-y-3">
+          {[
+            { label: 'Current Password', key: 'currentPassword' as const, placeholder: 'Enter current password' },
+            { label: 'New Password', key: 'password' as const, placeholder: 'At least 8 characters' },
+            { label: 'Confirm New Password', key: 'confirm' as const, placeholder: 'Repeat new password' },
+          ].map(field => (
+            <div key={field.key}>
+              <label className="text-xs text-slate-400 font-medium block mb-1">{field.label}</label>
+              <PasswordInput value={form[field.key]} onChange={value => set(field.key, value)} placeholder={field.placeholder}
+                autoComplete={field.key === 'currentPassword' ? 'current-password' : 'new-password'} />
+            </div>
+          ))}
+          {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-xl">{error}</div>}
+          <button type="submit" disabled={saving} className="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2">
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <KeyRound size={13} />}
+            Update Password
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export default function TeamPage() {
   const [showInvite, setShowInvite] = useState(false)
   const [editUser, setEditUser] = useState<User | null>(null)
+  const [showChangePassword, setShowChangePassword] = useState(false)
   const { data: me } = useSWR<{ id: string; role: Role }>('/api/auth/me', fetcher)
   const { data: usersData, mutate, isLoading } = useSWR<User[] | { error: string }>(
     '/api/users', fetcher
@@ -166,21 +247,50 @@ export default function TeamPage() {
     mutate()
   }
 
+  async function toggleUserStatus(user: User) {
+    const active = user.active === false
+    const action = active ? 'activate' : 'deactivate'
+    if (!confirm(`${active ? 'Activate' : 'Deactivate'} ${user.name} (${user.email})?`)) return
+    const response = await fetch(`/api/users/${user.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }),
+    })
+    if (!response.ok) {
+      const data = await response.json()
+      alert(data.error || `Failed to ${action} user`)
+    }
+    mutate()
+  }
+
+  const accountPanel = me && (
+    <div className="bg-[#111827] border border-slate-800/60 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div>
+        <h2 className="text-sm font-bold text-white">Your Account</h2>
+        <p className="text-xs text-slate-500 mt-0.5">Update the password used to sign in to VynCost.</p>
+      </div>
+      <button onClick={() => setShowChangePassword(true)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-700 hover:border-orange-500/50 hover:bg-orange-500/5 text-slate-300 hover:text-white text-xs font-bold transition-colors">
+        <KeyRound size={13} /> Change Password
+      </button>
+    </div>
+  )
+
   if (!isAdmin) {
     return (
-      <div className="max-w-3xl">
+      <div className="max-w-3xl space-y-5">
+        {accountPanel}
         <div className="bg-[#111827] border border-slate-800/60 rounded-2xl p-10 text-center">
           <Shield size={32} className="mx-auto mb-3 text-slate-600" />
           <div className="text-sm font-bold text-white mb-1">Access Restricted</div>
           <div className="text-xs text-slate-500">Only admins can manage team members.</div>
           {me && <div className="mt-3 text-[11px] text-slate-600">Your role: <span className="text-slate-400 font-bold">{me.role}</span></div>}
         </div>
+        {showChangePassword && me && <ChangePasswordModal user={me} onClose={() => setShowChangePassword(false)} />}
       </div>
     )
   }
 
   return (
     <div className="space-y-5 max-w-3xl">
+      {accountPanel}
       {/* Role legend */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {(['admin', 'editor', 'viewer'] as Role[]).map(r => {
@@ -225,12 +335,13 @@ export default function TeamPage() {
                 <th className="text-left px-4 py-3 font-medium">Role</th>
                 <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Joined</th>
                 <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">Last Login</th>
+                <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Status</th>
                 {isAdmin && <th className="px-4 sm:px-6 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/40">
               {users.map(u => (
-                <tr key={u.id} className={`hover:bg-slate-800/20 transition-colors ${u.id === me?.id ? 'bg-orange-500/3' : ''}`}>
+                <tr key={u.id} className={`hover:bg-slate-800/20 transition-colors ${u.id === me?.id ? 'bg-orange-500/3' : ''} ${u.active === false ? 'opacity-60' : ''}`}>
                   <td className="px-4 sm:px-6 py-3">
                     <div className="flex items-center gap-2.5">
                       <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
@@ -250,18 +361,30 @@ export default function TeamPage() {
                   <td className="px-4 py-3 text-slate-500 hidden lg:table-cell">
                     {u.lastLoginAt ? u.lastLoginAt.split('T')[0] : <span className="text-slate-700">Never</span>}
                   </td>
+                  <td className="px-4 py-3 hidden sm:table-cell">
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${u.active === false ? 'bg-slate-700/50 text-slate-400 border-slate-600/30' : 'bg-green-500/10 text-green-400 border-green-500/20'}`}>
+                      {u.active === false ? 'Inactive' : 'Active'}
+                    </span>
+                  </td>
                   {isAdmin && (
                     <td className="px-4 sm:px-6 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => setEditUser(u)}
+                          title="Change role" aria-label={`Change role for ${u.name}`}
                           className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-500 hover:text-white transition-colors">
                           <Pencil size={12} />
                         </button>
                         {u.id !== me?.id && (
-                          <button onClick={() => deleteUser(u)}
-                            className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors">
-                            <Trash2 size={12} />
-                          </button>
+                          <>
+                            <button onClick={() => toggleUserStatus(u)} title={u.active === false ? 'Activate user' : 'Deactivate user'} aria-label={`${u.active === false ? 'Activate' : 'Deactivate'} ${u.name}`}
+                              className="p-1.5 rounded-lg hover:bg-orange-500/10 text-slate-500 hover:text-orange-400 transition-colors">
+                              {u.active === false ? <Power size={12} /> : <PowerOff size={12} />}
+                            </button>
+                            <button onClick={() => deleteUser(u)} title="Delete user" aria-label={`Delete ${u.name}`}
+                              className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors">
+                              <Trash2 size={12} />
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>
@@ -315,6 +438,7 @@ export default function TeamPage() {
 
       {showInvite && <InviteModal onClose={() => setShowInvite(false)} onCreated={mutate} />}
       {editUser   && <EditRoleModal user={editUser} onClose={() => setEditUser(null)} onSaved={mutate} />}
+      {showChangePassword && me && <ChangePasswordModal user={me} onClose={() => setShowChangePassword(false)} />}
     </div>
   )
 }

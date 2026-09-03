@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireRole, getSessionFromRequest } from '@/lib/auth'
-import { updateUser, deleteUser } from '@/lib/user-store'
+import { requireRole, getSessionFromRequest } from '@/lib/auth-server'
+import { findUserById, updateUser, deleteUser, verifyPassword } from '@/lib/user-store'
 
 // PATCH /api/users/[id] — update name, role, or password
 // Admins can update anyone. Editors/viewers can only update their own password/name.
@@ -13,16 +13,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   // Only admins can change roles or update others
   const body = await req.json()
+  if (body.role && !['admin', 'editor', 'viewer'].includes(body.role)) {
+    return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+  }
+  if (body.active !== undefined && typeof body.active !== 'boolean') {
+    return NextResponse.json({ error: 'active must be a boolean' }, { status: 400 })
+  }
   if (body.role && session.role !== 'admin') {
     return NextResponse.json({ error: 'Only admins can change roles' }, { status: 403 })
+  }
+  if (body.active !== undefined && session.role !== 'admin') {
+    return NextResponse.json({ error: 'Only admins can change account status' }, { status: 403 })
   }
   if (!isSelf && session.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+  if (body.password) {
+    if (typeof body.password !== 'string' || body.password.length < 8) {
+      return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
+    }
+    if (isSelf) {
+      const user = findUserById(id)
+      if (!user || typeof body.currentPassword !== 'string' || !verifyPassword(body.currentPassword, user.passwordHash)) {
+        return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 })
+      }
+    }
+  }
+  delete body.currentPassword
 
-  const updated = updateUser(id, body)
-  if (!updated) return NextResponse.json({ error: 'User not found' }, { status: 404 })
-  return NextResponse.json(updated)
+  try {
+    const updated = updateUser(id, body)
+    if (!updated) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    return NextResponse.json(updated)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update user'
+    return NextResponse.json({ error: message }, { status: 400 })
+  }
 }
 
 // DELETE /api/users/[id] — admin only

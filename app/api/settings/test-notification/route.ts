@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireRole } from '@/lib/auth'
+import { requireRole } from '@/lib/auth-server'
 
 type Channel = 'slackWebhookUrl' | 'teamsWebhookUrl' | 'customWebhookUrl'
 

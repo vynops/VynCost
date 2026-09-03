@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireRole } from '@/lib/auth'
+import { requireRole } from '@/lib/auth-server'
 import { loadSettings } from '@/lib/settings-store'
 
 const PROVIDERS = ['groq', 'openai', 'anthropic', 'google', 'custom'] as const
