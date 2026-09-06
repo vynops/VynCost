@@ -32,6 +32,26 @@ VynCost gives engineering and FinOps teams a **single pane of glass** for cloud 
 
 ---
 
+
+## Screenshots
+
+| Feature & Description | Preview |
+|---|---|
+| **Login & Authentication**<br>Secure authentication interface supporting multi-user access with role-based controls (Admin, Editor, Viewer). | [![Login](screenshots/Screenshot%202026-09-01%20130227.png)](screenshots/Screenshot%202026-09-01%20130227.png) |
+| **Executive Overview**<br>Central FinOps dashboard with MTD spend, month-end forecast, active cloud accounts, top cost drivers, and key alerts. | [![Overview](screenshots/Screenshot%202026-09-01%20130330.png)](screenshots/Screenshot%202026-09-01%20130330.png) |
+| **Multi-Cloud Cost Explorer**<br>Multi-dimensional spend analysis filtered by service, region, account, or provider with daily trend visualization and CSV export. | [![Cost Explorer](screenshots/Screenshot%202026-09-01%20130449.png)](screenshots/Screenshot%202026-09-01%20130449.png) |
+| **Team Cost Allocation**<br>Department and team cost breakdown tracking tag compliance metrics, unallocated resources, and allocation rules. | [![Cost Allocation](screenshots/Screenshot%202026-09-01%20130631.png)](screenshots/Screenshot%202026-09-01%20130631.png) |
+| **Waste & Resource Cleanup**<br>Automated detection of idle instances, unattached EBS volumes, aged snapshots, and unattached IPs with monthly waste cost calculation. | [![Waste Detection](screenshots/Screenshot%202026-09-01%20130709.png)](screenshots/Screenshot%202026-09-01%20130709.png) |
+| **Rightsizing Recommendations**<br>Actionable cost optimization engine with risk scores, confidence ratings, annual savings, and copy-paste CLI remediation commands. | [![Recommendations](screenshots/Screenshot%202026-09-01%20130742.png)](screenshots/Screenshot%202026-09-01%20130742.png) |
+| **Budgets & Threshold Alerts**<br>Monthly budget tracking with real-time spend progress indicators, alert thresholds, and multi-channel webhook notifications. | [![Budgets & Alerts](screenshots/Screenshot%202026-09-01%20130840.png)](screenshots/Screenshot%202026-09-01%20130840.png) |
+| **Anomaly Detection**<br>Statistical spend spike detection with severity classification, impact scores, root cause breakdown, and one-click acknowledgement. | [![Anomaly Detection](screenshots/Screenshot%202026-09-01%20130938.png)](screenshots/Screenshot%202026-09-01%20130938.png) |
+| **Cost Forecasting**<br>30 / 60 / 90-day predictive cloud spend modeling with upper and lower confidence bands and daily projection tables. | [![Cost Forecasting](screenshots/Screenshot%202026-09-01%20131040.png)](screenshots/Screenshot%202026-09-01%20131040.png) |
+| **Commitments & RIs**<br>Savings Plans and Reserved Instance coverage monitoring, commitment utilization tracking, and renewal expiration alerts. | [![Commitments & RIs](screenshots/Screenshot%202026-09-01%20131120.png)](screenshots/Screenshot%202026-09-01%20131120.png) |
+| **FinOps AI Copilot**<br>Contextual AI chat assistant answering natural language spend queries, diagnosing anomalies, and recommending savings strategies. | [![FinOps AI Copilot](screenshots/Screenshot%202026-09-01%20131145.png)](screenshots/Screenshot%202026-09-01%20131145.png) |
+| **Settings & Cloud Accounts**<br>Cloud provider credential management (AWS, GCP, Azure, OCI), live connection validation, and AI provider/model configuration. | [![Settings](screenshots/Screenshot%202026-09-01%20131220.png)](screenshots/Screenshot%202026-09-01%20131220.png) |
+
+---
+
 ## Features
 
 ### 💰 Cost Overview
