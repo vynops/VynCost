@@ -14,7 +14,7 @@
 
 *Track, analyse, and optimise cloud spend across AWS, GCP, Azure, and OCI — from a single self-hosted dashboard.*
 
-[**Live Demo**](https://cost.vynops.online) · [**Docs**](https://vynops.com/docs) · [**GitHub**](https://github.com/vynops/VynCost) · [**Part of VynOps**](https://github.com/vynops)
+[**Live Demo**](https://cost.vynops.online) · [**Docs**](https://vynops.com/docs) · [**GitHub**](https://github.com/vynops/VynCost) · [**Part of VynOps**](https://vynops.com)
 
 </div>
 
