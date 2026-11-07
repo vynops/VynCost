@@ -5,23 +5,23 @@ import { simulatedOverview, simulatedRecommendations, simulatedWaste } from '@/l
 import type { CloudProvider } from '@/lib/mock-data'
 import { loadSettings } from '@/lib/settings-store'
 import { recordUsage } from '@/lib/copilot-usage'
+import { GROQ_DEFAULT_MODEL, GROQ_RETIRED_MODELS } from '@/lib/copilot-models'
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string }
 
-type AiResult = { reply: string; promptTokens?: number; completionTokens?: number }
+type AiResult = { reply: string; model: string; promptTokens?: number; completionTokens?: number }
 
 type ProviderResponse = {
   error?: { message?: string }
   message?: string
+  model?: string
+  modelVersion?: string
   content?: Array<{ type?: string; text?: string }>
   usage?: { input_tokens?: number; output_tokens?: number; prompt_tokens?: number; completion_tokens?: number }
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
   usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
   choices?: Array<{ message?: { content?: string } }>
 }
-
-const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b'
-const RETIRED_GROQ_MODELS = new Set(['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'])
 
 async function buildContext(): Promise<string> {
   const accounts = listAccounts()
@@ -67,9 +67,14 @@ export async function POST(req: NextRequest) {
   const provider = settings.aiProvider || 'groq'
   const apiKey = settings.aiApiKey || (provider === 'groq' ? settings.groqApiKey || process.env.GROQ_API_KEY : '') || ''
   const configuredModel = settings.aiModel?.trim()
-  const model = provider === 'groq' && (!configuredModel || RETIRED_GROQ_MODELS.has(configuredModel))
-    ? GROQ_DEFAULT_MODEL
-    : configuredModel || 'gpt-4o-mini'
+  const model = configuredModel || (provider === 'groq' ? GROQ_DEFAULT_MODEL : 'gpt-4o-mini')
+
+  if (provider === 'groq' && GROQ_RETIRED_MODELS.has(model)) {
+    return NextResponse.json({
+      error: `Groq model ${model} is retired. Update the model in Settings; the current default is ${GROQ_DEFAULT_MODEL}.`,
+      model,
+    }, { status: 409 })
+  }
 
   if (!apiKey && !(provider === 'custom' && settings.aiBaseUrl)) {
     // Demo mode — deterministic responses
@@ -82,7 +87,7 @@ export async function POST(req: NextRequest) {
     } else if (lastMsg.includes('waste') || lastMsg.includes('idle')) {
       reply = `I've found **8 idle/orphaned resources** costing **$${(8*1.8*30).toFixed(0)}/month** you can eliminate today:\n\n- 2 unattached EBS volumes (34 days idle)\n- 1 Elastic IP not associated with any instance\n- 1 orphaned EBS snapshot (source volume deleted)\n- 1 staging ALB with 0 targets for 21 days\n\nAll are **Low risk** — I'd recommend deleting them this sprint.`
     }
-    return NextResponse.json({ reply })
+    return NextResponse.json({ reply, model: 'Demo responses', demoMode: true })
   }
 
   const context = await buildContext()
@@ -95,10 +100,10 @@ export async function POST(req: NextRequest) {
     if (result.promptTokens !== undefined || result.completionTokens !== undefined) {
       recordUsage(result.promptTokens ?? 0, result.completionTokens ?? 0)
     }
-    return NextResponse.json({ reply: result.reply })
+    return NextResponse.json({ reply: result.reply, model: result.model, demoMode: false })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'AI provider request failed'
-    return NextResponse.json({ error: message }, { status: 502 })
+    return NextResponse.json({ error: message, provider, model }, { status: 502 })
   }
 }
 
@@ -127,6 +132,7 @@ async function requestAi({
     })
     return {
       reply: completion.choices[0]?.message?.content || 'No response generated.',
+      model: completion.model || model,
       promptTokens: completion.usage?.prompt_tokens,
       completionTokens: completion.usage?.completion_tokens,
     }
@@ -151,6 +157,7 @@ async function requestAi({
     const content = Array.isArray(data.content) ? data.content.find(item => item.type === 'text') : null
     return {
       reply: content?.text || 'No response generated.',
+      model: data.model || model,
       promptTokens: data.usage?.input_tokens,
       completionTokens: data.usage?.output_tokens,
     }
@@ -169,6 +176,7 @@ async function requestAi({
     const data = await readProviderResponse(response)
     return {
       reply: data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('') || 'No response generated.',
+      model: data.modelVersion || model,
       promptTokens: data.usageMetadata?.promptTokenCount,
       completionTokens: data.usageMetadata?.candidatesTokenCount,
     }
@@ -188,6 +196,7 @@ async function requestAi({
   const data = await readProviderResponse(response)
   return {
     reply: data.choices?.[0]?.message?.content || 'No response generated.',
+    model: data.model || model,
     promptTokens: data.usage?.prompt_tokens,
     completionTokens: data.usage?.completion_tokens,
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAccount, updateAccount, deleteAccount, sanitize } from '@/lib/account-store'
+import { requireRole } from '@/lib/auth-server'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -9,6 +10,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const deny = await requireRole(req, 'admin')
+  if (deny) return deny
+
   const { id } = await params
   const body = await req.json()
   // Strip blank secret fields so existing stored values are not overwritten when
@@ -23,6 +27,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const deny = await requireRole(_req, 'admin')
+  if (deny) return deny
+
   const { id } = await params
   const ok = deleteAccount(id)
   if (!ok) return NextResponse.json({ error: 'Not found' }, { status: 404 })

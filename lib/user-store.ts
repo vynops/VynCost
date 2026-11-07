@@ -15,6 +15,7 @@ export interface User {
   name: string
   role: UserRole
   active: boolean
+  mustChangePassword?: boolean
   passwordHash: string   // hex: salt:iterations:hash
   createdAt: string
   lastLoginAt?: string
@@ -54,8 +55,8 @@ export function ensureAdminExists(): void {
   const users = readUsers()
   if (users.length > 0) return
 
-  const adminEmail    = process.env.VYNCOST_ADMIN_EMAIL    || 'admin@example.com'
-  const adminPassword = process.env.VYNCOST_ADMIN_PASSWORD || 'admin'
+  const adminEmail    = process.env.VYNCOST_ADMIN_EMAIL    || 'admin@vyncost.local'
+  const adminPassword = process.env.VYNCOST_ADMIN_PASSWORD || 'changeme'
   const adminName     = process.env.VYNCOST_ADMIN_NAME     || 'Admin'
 
   const admin: User = {
@@ -64,6 +65,7 @@ export function ensureAdminExists(): void {
     name:         adminName,
     role:         'admin',
     active:       true,
+    mustChangePassword: true,
     passwordHash: hashPassword(adminPassword),
     createdAt:    new Date().toISOString(),
   }
@@ -104,7 +106,7 @@ export function createUser(data: { email: string; name: string; role: UserRole; 
   return safe
 }
 
-export function updateUser(id: string, data: Partial<{ name: string; role: UserRole; password: string; active: boolean }>): Omit<User, 'passwordHash'> | null {
+export function updateUser(id: string, data: Partial<{ name: string; role: UserRole; password: string; active: boolean; mustChangePassword: boolean }>): Omit<User, 'passwordHash'> | null {
   const users = readUsers()
   const idx = users.findIndex(u => u.id === id)
   if (idx === -1) return null
@@ -116,7 +118,10 @@ export function updateUser(id: string, data: Partial<{ name: string; role: UserR
   }
   if (data.name)     users[idx].name = data.name
   if (data.role)     users[idx].role = data.role
-  if (data.password) users[idx].passwordHash = hashPassword(data.password)
+  if (data.password) {
+    users[idx].passwordHash = hashPassword(data.password)
+    users[idx].mustChangePassword = data.mustChangePassword ?? false
+  }
   if (data.active !== undefined) users[idx].active = data.active
   writeUsers(users)
   const { passwordHash: _, ...safe } = users[idx]

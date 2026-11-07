@@ -16,18 +16,38 @@ const SEVERITY_STYLES = {
 const PROVIDER_COLORS: Record<string, string> = { aws: 'text-orange-400', gcp: 'text-blue-400', azure: 'text-sky-400', oci: 'text-red-400' }
 
 export default function AnomaliesPage() {
-  const [acked, setAcked] = useState<Set<string>>(new Set())
   const [severityFilter, setSeverityFilter] = useState('')
   const [providerFilter, setProviderFilter] = useState('')
+  const [actionError, setActionError] = useState('')
+  const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null)
 
-  const { data = [], isLoading } = useSWR<AnomalyEvent[]>('/api/anomalies', fetcher, { refreshInterval: 60000 })
+  const { data = [], isLoading, mutate } = useSWR<AnomalyEvent[]>('/api/anomalies', fetcher, { refreshInterval: 60000 })
+
+  async function acknowledge(id: string) {
+    setActionError('')
+    setAcknowledgingId(id)
+    try {
+      const response = await fetch(`/api/anomalies/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'acknowledged' }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Could not acknowledge anomaly')
+      await mutate()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not acknowledge anomaly')
+    } finally {
+      setAcknowledgingId(null)
+    }
+  }
 
   const visible = data
     .filter(a => !severityFilter || a.severity === severityFilter)
     .filter(a => !providerFilter || a.provider === providerFilter)
 
-  const open   = visible.filter(a => a.status === 'open' && !acked.has(a.id))
-  const closed = visible.filter(a => a.status === 'acknowledged' || acked.has(a.id))
+  const open   = visible.filter(a => a.status === 'open')
+  const closed = visible.filter(a => a.status === 'acknowledged')
   const totalWasted = open.reduce((s, a) => s + (a.actual - a.baseline), 0)
   const highCount   = open.filter(a => a.severity === 'high').length
 
@@ -75,12 +95,14 @@ export default function AnomaliesPage() {
           Date: a.date, Severity: a.severity, Service: a.service, Provider: providerLabel(a.provider),
           Account: a.accountName, Region: a.region, 'Baseline $/day': a.baseline.toFixed(2),
           'Actual $/day': a.actual.toFixed(2), 'Spike %': a.spikePercent.toFixed(1),
-          Status: acked.has(a.id) ? 'acknowledged' : a.status, Description: a.description,
+          Status: a.status, Description: a.description,
         })), 'vyncost-anomalies.csv')}
           className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700 hover:border-slate-600 text-slate-400 hover:text-white text-xs transition-colors">
           <Download size={12} /> Export CSV
         </button>
       </div>
+
+      {actionError && <p role="alert" className="text-xs text-red-400">{actionError}</p>}
 
       {isLoading ? (
         <div className="h-48 flex items-center justify-center text-slate-500 animate-pulse text-sm">Scanning for anomalies…</div>
@@ -131,8 +153,8 @@ export default function AnomaliesPage() {
                             </div>
                           </div>
                         </div>
-                        <button onClick={() => setAcked(s => new Set([...s, a.id]))}
-                          className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs font-medium transition-colors">
+                        <button type="button" disabled={acknowledgingId === a.id} onClick={() => void acknowledge(a.id)}
+                          className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs font-medium transition-colors disabled:opacity-50">
                           <BellOff size={12} /> Acknowledge
                         </button>
                       </div>

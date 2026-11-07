@@ -3,8 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "node scripts/ensure-env.mjs",
+    "predev": "node scripts/ensure-env.mjs",
     "dev": "next dev -p 3020",
+    "prebuild": "node scripts/ensure-env.mjs",
     "build": "next build",
+    "prestart": "node scripts/ensure-env.mjs",
     "start": "next start -p 3020",
     "lint": "eslint"
   },

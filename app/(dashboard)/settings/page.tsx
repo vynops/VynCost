@@ -5,6 +5,7 @@ import { Plus, Trash2, Pencil, CheckCircle, AlertCircle, Clock, X, Eye, EyeOff, 
 import { providerLabel, providerBg } from '@/lib/utils'
 import type { CloudAccount, CloudProvider } from '@/lib/account-store'
 import type { AppSettings } from '@/lib/settings-store'
+import { GROQ_DEFAULT_MODEL, GROQ_RETIRED_MODELS } from '@/lib/copilot-models'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -181,40 +182,18 @@ function AccountFormModal({
 
 const AI_PROVIDERS = [
   {
-    value: 'groq', label: 'Groq', keyLabel: 'Groq API Key', placeholder: 'gsk_...', defaultModel: 'llama-3.3-70b-versatile',
-    models: [
-      { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (recommended)' },
-      { value: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (fast)' },
-      { value: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B (32k context)' },
-      { value: 'gemma2-9b-it', label: 'Gemma 2 9B' },
-    ],
+    value: 'groq', label: 'Groq', keyLabel: 'Groq API Key', placeholder: 'gsk_...', defaultModel: GROQ_DEFAULT_MODEL,
   },
   {
     value: 'openai', label: 'OpenAI', keyLabel: 'OpenAI API Key', placeholder: 'sk-...', defaultModel: 'gpt-4o-mini',
-    models: [
-      { value: 'gpt-4o', label: 'GPT-4o' },
-      { value: 'gpt-4o-mini', label: 'GPT-4o Mini (fast)' },
-      { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-    ],
   },
   {
     value: 'anthropic', label: 'Anthropic (Claude)', keyLabel: 'Anthropic API Key', placeholder: 'sk-ant-...', defaultModel: 'claude-3-5-sonnet-latest',
-    models: [
-      { value: 'claude-3-5-sonnet-latest', label: 'Claude 3.5 Sonnet' },
-      { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku (fast)' },
-    ],
   },
   {
     value: 'google', label: 'Google (Gemini)', keyLabel: 'Gemini API Key', placeholder: 'AIza...', defaultModel: 'gemini-2.0-flash',
-    models: [
-      { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-      { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
-      { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-    ],
   },
-  {
-    value: 'custom', label: 'Custom / Self-Hosted', keyLabel: 'API Key', placeholder: 'Optional API key', defaultModel: '', models: [],
-  },
+  { value: 'custom', label: 'Custom / Self-Hosted', keyLabel: 'API Key', placeholder: 'Optional API key', defaultModel: '' },
 ]
 
 export default function SettingsPage() {
@@ -230,7 +209,7 @@ export default function SettingsPage() {
   const [testingEmail, setTestingEmail] = useState(false)
   const [emailTest, setEmailTest] = useState<{ ok: boolean; message: string } | null>(null)
   const [testingAi, setTestingAi] = useState(false)
-  const [aiTest, setAiTest] = useState<{ ok: boolean; message: string; latencyMs?: number } | null>(null)
+  const [aiTest, setAiTest] = useState<{ ok: boolean; message: string; model?: string; latencyMs?: number } | null>(null)
 
   const { data: accounts = [], mutate: mutateAccounts } = useSWR<Partial<CloudAccount>[]>('/api/accounts', fetcher)
   const { data: settings, mutate: mutateSettings } = useSWR<AppSettings & { adminEmail?: string }>('/api/settings', fetcher)
@@ -239,6 +218,7 @@ export default function SettingsPage() {
 
   const merged = { ...settings, ...localSettings }
   const setS = (k: string, v: string | number | boolean) => setLocalSettings(prev => ({ ...prev, [k]: v }))
+  const retiredGroqModel = merged.aiProvider === 'groq' && GROQ_RETIRED_MODELS.has(merged.aiModel || '')
 
   async function testNotification(channel: 'slackWebhookUrl' | 'teamsWebhookUrl' | 'customWebhookUrl') {
     const url = String(merged[channel] || '').trim()
@@ -296,8 +276,8 @@ export default function SettingsPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider, apiKey, model: merged.aiModel, baseUrl: merged.aiBaseUrl }),
       })
-      const data = await response.json() as { ok?: boolean; message?: string; latencyMs?: number }
-      setAiTest({ ok: response.ok && data.ok === true, message: data.message || 'AI connection test failed', latencyMs: data.latencyMs })
+      const data = await response.json() as { ok?: boolean; message?: string; model?: string; latencyMs?: number }
+      setAiTest({ ok: response.ok && data.ok === true, message: data.message || 'AI model test failed', model: data.model, latencyMs: data.latencyMs })
     } catch (error) {
       setAiTest({ ok: false, message: error instanceof Error ? error.message : 'AI connection test failed' })
     } finally {
@@ -592,7 +572,6 @@ export default function SettingsPage() {
             </div>
             {(() => {
               const provider = AI_PROVIDERS.find(p => p.value === merged.aiProvider) || AI_PROVIDERS[0]
-              const models = provider.models
               return <>
             <div>
               <label className="text-xs text-slate-400 font-medium block mb-1">{provider.keyLabel}</label>
@@ -613,11 +592,12 @@ export default function SettingsPage() {
             </div>
             <div>
               <label className="text-xs text-slate-400 font-medium block mb-1">AI Model</label>
-              {models.length > 0 ? <select value={merged.aiModel || provider.defaultModel} onChange={e => setS('aiModel', e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60">
-                {models.map(model => <option key={model.value} value={model.value}>{model.label}</option>)}
-              </select> : <input value={merged.aiModel || ''} onChange={e => setS('aiModel', e.target.value)} placeholder="your-model-id"
-                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60 font-mono" />}
+              <input value={merged.aiModel || provider.defaultModel} onChange={e => setS('aiModel', e.target.value)} placeholder="provider-model-id"
+                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-orange-500/60 font-mono" />
+              {retiredGroqModel && <div role="alert" className="mt-2 flex items-center justify-between gap-3 text-xs text-amber-300 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2">
+                <span>This Groq model is retired. Update the model ID before testing or saving.</span>
+                <button type="button" onClick={() => setS('aiModel', GROQ_DEFAULT_MODEL)} className="shrink-0 underline underline-offset-2">Use current default</button>
+              </div>}
             </div>
             {provider.value === 'custom' && <div>
               <label className="text-xs text-slate-400 font-medium block mb-1">OpenAI-Compatible Base URL</label>
@@ -630,7 +610,7 @@ export default function SettingsPage() {
                 {testingAi ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Test Connection
               </button>
               {aiTest && <span className={`text-[11px] ${aiTest.ok ? 'text-green-400' : 'text-red-400'}`}>
-                {aiTest.message}{aiTest.latencyMs !== undefined ? ` (${aiTest.latencyMs}ms)` : ''}
+                {aiTest.message}{aiTest.model ? ` · ${aiTest.model}` : ''}{aiTest.latencyMs !== undefined ? ` (${aiTest.latencyMs}ms)` : ''}
               </span>}
             </div>
               </>

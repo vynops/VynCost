@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { GROQ_DEFAULT_MODEL } from '@/lib/copilot-models'
 
 const DATA_DIR = path.join(process.cwd(), 'data')
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json')
@@ -51,7 +52,7 @@ const DEFAULTS: AppSettings = {
   costSpikeThresholdPct: 20,
   defaultGroupBy: 'service',
   aiProvider: 'groq',
-  aiModel: 'llama-3.3-70b-versatile',
+  aiModel: GROQ_DEFAULT_MODEL,
   aiApiKey: '',
   aiBaseUrl: '',
   groqApiKey: '',

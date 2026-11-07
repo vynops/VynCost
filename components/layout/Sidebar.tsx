@@ -81,13 +81,15 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-3 px-2 overflow-y-auto">
-        {NAV_GROUPS.map(({ section, items }) => (
-          <div key={section} className="mb-4">
+        {NAV_GROUPS.map(({ section, items }) => {
+            const visibleItems = items.filter(item => !['/team', '/settings'].includes(item.href) || me?.role === 'admin')
+            if (!visibleItems.length) return null
+            return <div key={section} className="mb-4">
             <p className="px-2.5 mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-600">
               {section}
             </p>
             <div className="space-y-0.5">
-              {items.map(({ href, icon: Icon, label, badge }) => {
+                {visibleItems.map(({ href, icon: Icon, label, badge }) => {
                 const active = path.startsWith(href)
                 return (
                   <Link key={href} href={href}
@@ -111,7 +113,7 @@ export default function Sidebar() {
               })}
             </div>
           </div>
-        ))}
+        })}
       </nav>
 
       {/* Bottom — user + logout */}

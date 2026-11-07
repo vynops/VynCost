@@ -3,31 +3,43 @@ import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import type { UserRole } from '@/lib/user-store'
 
-const SECRET = new TextEncoder().encode(process.env.VYNCOST_SECRET || 'dev-secret-change-in-production')
 const COOKIE = 'vyncost_session'
+
+function sessionSecret(): Uint8Array {
+  const configured = process.env.VYNCOST_SECRET
+  if (process.env.NODE_ENV === 'production') {
+    if (!configured || new TextEncoder().encode(configured).length < 32) {
+      throw new Error('VYNCOST_SECRET must be configured with at least 32 bytes in production')
+    }
+    return new TextEncoder().encode(configured)
+  }
+  return new TextEncoder().encode(configured || 'dev-secret-change-in-production')
+}
 
 export interface SessionPayload {
   id: string
   email: string
   name: string
   role: UserRole
+  mustChangePassword?: boolean
 }
 
 export async function createSession(payload: SessionPayload): Promise<string> {
   return await new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime('7d')
-    .sign(SECRET)
+    .sign(sessionSecret())
 }
 
 export async function verifySession(token: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, SECRET)
+    const { payload } = await jwtVerify(token, sessionSecret())
     return {
       id:    payload.id    as string,
       email: payload.email as string,
       name:  payload.name  as string,
       role:  payload.role  as UserRole,
+      mustChangePassword: payload.mustChangePassword === true,
     }
   } catch {
     return null

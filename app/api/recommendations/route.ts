@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { listAccounts } from '@/lib/account-store'
 import { simulatedRecommendations } from '@/lib/simulation'
 import type { CloudProvider } from '@/lib/account-store'
+import { listActionStates } from '@/lib/action-store'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
@@ -15,5 +16,9 @@ export async function GET(req: NextRequest) {
   )
   if (category) recs = recs.filter(r => r.category === category)
   if (provider) recs = recs.filter(r => r.provider === provider)
-  return NextResponse.json(recs)
+  const states = listActionStates('recommendations')
+  return NextResponse.json(recs.map(rec => {
+    const status = states[rec.id]?.status
+    return status === 'applied' || status === 'dismissed' ? { ...rec, status } : rec
+  }))
 }

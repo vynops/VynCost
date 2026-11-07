@@ -15,8 +15,15 @@ export async function POST(req: NextRequest) {
 
   touchLastLogin(user.id)
 
-  const token = await createSession({ id: user.id, email: user.email, name: user.name, role: user.role })
-  const res = NextResponse.json({ ok: true, role: user.role, name: user.name })
+  const mustChangePassword = user.mustChangePassword === true
+  const token = await createSession({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    mustChangePassword,
+  })
+  const res = NextResponse.json({ ok: true, role: user.role, name: user.name, mustChangePassword })
   res.cookies.set(sessionCookieName(), token, {
     httpOnly: true, sameSite: 'lax', path: '/',
     maxAge: 60 * 60 * 24 * 7,

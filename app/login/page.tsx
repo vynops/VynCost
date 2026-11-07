@@ -21,8 +21,12 @@ export default function LoginPage() {
       body: JSON.stringify({ email, password }),
     })
     setLoading(false)
-    if (res.ok) { router.push('/overview') }
-    else { setError('Invalid email or password') }
+    if (res.ok) {
+      const result = await res.json() as { mustChangePassword?: boolean }
+      router.push(result.mustChangePassword ? '/change-password' : '/overview')
+    } else {
+      setError('Invalid email or password')
+    }
   }
 
   return (
@@ -72,7 +76,7 @@ export default function LoginPage() {
 
         <div className="mt-6 rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-3 text-xs text-slate-500 space-y-1.5">
           <p className="font-semibold text-slate-400">First-time setup</p>
-          <p>Set <span className="font-mono text-slate-400">VYNCOST_ADMIN_EMAIL</span> and <span className="font-mono text-slate-400">VYNCOST_ADMIN_PASSWORD</span> in <span className="font-mono text-slate-400">.env.local</span> — the admin account is created automatically on first boot.</p>
+          <p>Fresh installs create the admin account automatically. Change its password before opening the dashboard.</p>
         </div>
 
         {/* Family footer */}

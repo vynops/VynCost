@@ -32,7 +32,13 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-function RecCard({ rec, expanded, onToggle }: { rec: Recommendation; expanded: boolean; onToggle: () => void }) {
+function RecCard({ rec, expanded, onToggle, onStatusChange, statusPending }: {
+  rec: Recommendation
+  expanded: boolean
+  onToggle: () => void
+  onStatusChange: (status: 'applied' | 'dismissed') => void
+  statusPending: boolean
+}) {
   const saving = rec.savingsPerMonth
   const riskCls = riskColor(rec.risk)
 
@@ -119,10 +125,10 @@ function RecCard({ rec, expanded, onToggle }: { rec: Recommendation; expanded: b
 
           {rec.status === 'open' && (
             <div className="flex gap-2">
-              <button className="px-4 py-2 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 text-xs font-bold hover:bg-green-500/20 transition-colors">
+              <button type="button" disabled={statusPending} onClick={() => onStatusChange('applied')} className="px-4 py-2 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 text-xs font-bold hover:bg-green-500/20 transition-colors disabled:opacity-50">
                 Mark as Applied
               </button>
-              <button className="px-4 py-2 rounded-xl bg-slate-800 text-slate-400 text-xs font-medium hover:text-white transition-colors">
+              <button type="button" disabled={statusPending} onClick={() => onStatusChange('dismissed')} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-400 text-xs font-medium hover:text-white transition-colors disabled:opacity-50">
                 Dismiss
               </button>
             </div>
@@ -137,11 +143,32 @@ export default function RecommendationsPage() {
   const [category, setCategory] = useState('')
   const [risk, setRisk] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [actionError, setActionError] = useState('')
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
 
-  const { data = [], isLoading } = useSWR<Recommendation[]>(
+  const { data = [], isLoading, mutate } = useSWR<Recommendation[]>(
     `/api/recommendations?category=${category}&provider=`,
     fetcher, { refreshInterval: 60000 }
   )
+
+  async function updateStatus(id: string, status: 'applied' | 'dismissed') {
+    setActionError('')
+    setUpdatingId(id)
+    try {
+      const response = await fetch(`/api/recommendations/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Could not update recommendation')
+      await mutate()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not update recommendation')
+    } finally {
+      setUpdatingId(null)
+    }
+  }
 
   const filtered = data.filter(r => !risk || r.risk === risk)
   const openRecs = filtered.filter(r => r.status === 'open')
@@ -190,6 +217,8 @@ export default function RecommendationsPage() {
         </button>
       </div>
 
+      {actionError && <p role="alert" className="text-xs text-red-400">{actionError}</p>}
+
       {isLoading ? (
         <div className="h-48 flex items-center justify-center text-slate-500 text-sm animate-pulse">Loading recommendations…</div>
       ) : filtered.length === 0 ? (
@@ -202,7 +231,9 @@ export default function RecommendationsPage() {
           {filtered.map(rec => (
             <RecCard key={rec.id} rec={rec}
               expanded={expanded === rec.id}
-              onToggle={() => setExpanded(expanded === rec.id ? null : rec.id)} />
+              onToggle={() => setExpanded(expanded === rec.id ? null : rec.id)}
+              onStatusChange={status => void updateStatus(rec.id, status)}
+              statusPending={updatingId === rec.id} />
           ))}
         </div>
       )}

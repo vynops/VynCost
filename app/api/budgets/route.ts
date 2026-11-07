@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { listBudgets, createBudget } from '@/lib/budget-store'
 import { listAccounts } from '@/lib/account-store'
 import { simulatedExplorer } from '@/lib/simulation'
+import { requireRole } from '@/lib/auth-server'
 
 export async function GET() {
   const budgets = listBudgets()
@@ -34,6 +35,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const deny = await requireRole(req, 'editor')
+  if (deny) return deny
+
   const body = await req.json()
   const budget = createBudget(body)
   return NextResponse.json(budget, { status: 201 })

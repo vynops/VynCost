@@ -86,6 +86,8 @@ export default function CopilotPage() {
   const [messages, setMessages] = useState<Message[]>(() => loadHistory())
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [requestError, setRequestError] = useState('')
+  const [activeModel, setActiveModel] = useState('')
   const [showHistory, setShowHistory] = useState(false)
   const [historyFilter, setHistoryFilter] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -111,6 +113,7 @@ export default function CopilotPage() {
   async function send(text?: string) {
     const content = (text ?? input).trim()
     if (!content || loading) return
+    setRequestError('')
     setInput('')
 
     const now = new Date()
@@ -130,15 +133,20 @@ export default function CopilotPage() {
         // Full history is still displayed in the UI from localStorage
         body: JSON.stringify({ messages: newMessages.slice(-API_CONTEXT_MSGS).map(m => ({ role: m.role, content: m.content })) }),
       })
-      const { reply } = await res.json()
+      const result = await res.json() as { reply?: string; error?: string; model?: string }
+      if (!res.ok) {
+        setRequestError(result.error || `AI request failed (${res.status})`)
+        return
+      }
+      setActiveModel(result.model || 'Model ID unavailable')
       setMessages(prev => [...prev, {
-        role: 'assistant', content: reply,
+        role: 'assistant', content: result.reply || 'No response generated.',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         date: todayStr(),
       }])
       mutateUsage()
-    } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong. Please try again.', date: todayStr() }])
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : 'AI request failed. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -172,6 +180,9 @@ export default function CopilotPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {activeModel && <div className="px-2.5 py-1 rounded-lg bg-slate-800/70 text-[10px] text-slate-400 font-mono" title="Model reported by the provider for the most recent response">
+            Model: {activeModel}
+          </div>}
           {usage?.today && usage.today.totalTokens > 0 && (
             <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-violet-500/10 border border-violet-500/20">
               <Zap size={10} className="text-violet-400 shrink-0" />
@@ -201,6 +212,10 @@ export default function CopilotPage() {
           </button>
         </div>
       </div>
+
+      {requestError && <div role="alert" className="mb-3 shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+        AI request failed: {requestError}
+      </div>}
 
 
       {/* Messages + History overlay */}

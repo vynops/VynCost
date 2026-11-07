@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ociTestConnection, ociHasCredentials } from '@/lib/oci-live'
+import { ociTestConnection } from '@/lib/oci-live'
 import { getAccount } from '@/lib/account-store'
 import type { CloudAccount } from '@/lib/account-store'
+import { requireRole } from '@/lib/auth-server'
 
 /** Quick credential test — real OCI call; mock validation for AWS/GCP/Azure */
 export async function POST(req: NextRequest) {
+  const deny = await requireRole(req, 'admin')
+  if (deny) return deny
+
   const body = await req.json()
   const { provider } = body
 
