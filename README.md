@@ -10,7 +10,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white)](https://nextjs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-[![Groq](https://img.shields.io/badge/AI-Groq_Llama_3.3-orange)](https://groq.com)
+![AI](https://img.shields.io/badge/AI-Multi--provider-orange)
 
 *Track, analyse, and optimise cloud spend across AWS, GCP, Azure, and OCI — from a single self-hosted dashboard.*
 
@@ -463,26 +463,18 @@ VynCost/
 
 ## Roadmap
 
-### v0.2 — Real Cloud Integration
-- [ ] AWS Cost Explorer API integration
-- [ ] GCP Billing Export / BigQuery integration
-- [ ] Azure Cost Management API integration
-- [ ] OCI Usage Reports API integration
-- [ ] Scheduled background data sync
+### Implemented
+- Live OCI cost and usage data
+- On-demand CSV exports in several cost views
+- Persisted anomaly acknowledgement
 
-### v0.3 — Alerting & Automation
-- [ ] Slack / webhook budget threshold alerts
-- [ ] Email alerts via SMTP
-- [ ] Alert history log with acknowledgement
-- [ ] Auto-apply low-risk recommendations (with approval flow)
-
-### v0.4 — Advanced FinOps
-- [ ] Custom tag-based allocation rules (YAML config)
-- [ ] CSV / PDF cost report export (scheduled)
-- [ ] Terraform cost estimation (pre-apply plan diffing)
-- [ ] Kubernetes cost allocation (via VynOps integration)
-- [ ] Prometheus metrics export (`/metrics`)
-- [ ] SSO / OIDC support
+### Planned
+- Live AWS, GCP, and Azure billing integrations with scheduled data sync
+- Automated budget alerts through Slack, Teams, webhooks, and email, with delivery history
+- Approval-based execution of recommendation actions
+- Custom tag allocation rules and Kubernetes cost allocation
+- Scheduled CSV/PDF reports and Terraform cost estimation
+- Prometheus metrics and SSO/OIDC support
 
 ---
 
