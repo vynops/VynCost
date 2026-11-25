@@ -60,8 +60,17 @@ Keep answers to 2-4 short paragraphs maximum. Use numbers from the context above
 }
 
 export async function POST(req: NextRequest) {
-  const { messages } = await req.json()
-  if (!messages?.length) return NextResponse.json({ error: 'No messages' }, { status: 400 })
+  const body: unknown = await req.json().catch(() => null)
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+  const messages = (body as { messages?: unknown }).messages
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return NextResponse.json({ error: 'No messages' }, { status: 400 })
+  }
+  if (!messages.every(isChatMessage)) {
+    return NextResponse.json({ error: 'Each message must have a valid role and non-empty content' }, { status: 400 })
+  }
 
   const settings = loadSettings()
   const provider = settings.aiProvider || 'groq'
@@ -91,20 +100,26 @@ export async function POST(req: NextRequest) {
   }
 
   const context = await buildContext()
-  const chatMessages = messages.map((m: { role: string; content: string }) => ({
+  const chatMessages: ChatMessage[] = messages.map((m: ChatMessage) => ({
     role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content,
-  })) as ChatMessage[]
+  }))
 
   try {
     const result = await requestAi({ provider, apiKey, model, baseUrl: settings.aiBaseUrl, context, messages: chatMessages })
-    if (result.promptTokens !== undefined || result.completionTokens !== undefined) {
-      recordUsage(result.promptTokens ?? 0, result.completionTokens ?? 0)
-    }
+    recordUsage(result.promptTokens ?? 0, result.completionTokens ?? 0, `${provider}/${result.model}`)
     return NextResponse.json({ reply: result.reply, model: result.model, demoMode: false })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'AI provider request failed'
     return NextResponse.json({ error: message, provider, model }, { status: 502 })
   }
+}
+
+function isChatMessage(value: unknown): value is ChatMessage {
+  if (!value || typeof value !== 'object') return false
+  const message = value as Record<string, unknown>
+  return (message.role === 'user' || message.role === 'assistant')
+    && typeof message.content === 'string'
+    && message.content.trim().length > 0
 }
 
 async function requestAi({
@@ -191,6 +206,7 @@ async function requestAi({
       messages: [{ role: 'system', content: context }, ...messages],
       max_tokens: 512,
       temperature: 0.3,
+      stream: false,
     }),
   })
   const data = await readProviderResponse(response)
@@ -202,8 +218,30 @@ async function requestAi({
   }
 }
 
+// Some OpenAI-compatible gateways stream SSE chunks regardless of the stream flag.
+function parseSse(text: string): ProviderResponse {
+  let model: string | undefined
+  let content = ''
+  let usage: ProviderResponse['usage']
+  for (const line of text.split('\n')) {
+    const payload = line.replace(/^data:\s*/, '').trim()
+    if (!line.startsWith('data:') || !payload || payload === '[DONE]') continue
+    const chunk = JSON.parse(payload) as { model?: string; usage?: ProviderResponse['usage']; choices?: Array<{ delta?: { content?: string } }> }
+    model = chunk.model ?? model
+    usage = chunk.usage ?? usage
+    content += chunk.choices?.[0]?.delta?.content ?? ''
+  }
+  return { model, usage, choices: [{ message: { content } }] }
+}
+
 async function readProviderResponse(response: Response): Promise<ProviderResponse> {
-  const data = await response.json().catch(() => ({}))
+  const text = await response.text()
+  let data: ProviderResponse
+  try {
+    data = text.trimStart().startsWith('data:') ? parseSse(text) : JSON.parse(text)
+  } catch {
+    data = {}
+  }
   if (!response.ok) {
     throw new Error(data.error?.message || data.message || `AI provider returned HTTP ${response.status}`)
   }

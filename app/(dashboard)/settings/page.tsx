@@ -9,6 +9,12 @@ import { GROQ_DEFAULT_MODEL, GROQ_RETIRED_MODELS } from '@/lib/copilot-models'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
+type UsageTotals = { requests: number; promptTokens: number; completionTokens: number; totalTokens: number }
+type CopilotUsageData = {
+  today: UsageTotals & { models?: Record<string, UsageTotals> }
+  last7Days: Array<UsageTotals & { date: string; models?: Record<string, UsageTotals> }>
+}
+
 const PROVIDER_LOGOS: Record<CloudProvider, string> = {
   aws: '🟠', gcp: '🔵', azure: '🔷', oci: '🔴',
 }
@@ -213,12 +219,19 @@ export default function SettingsPage() {
 
   const { data: accounts = [], mutate: mutateAccounts } = useSWR<Partial<CloudAccount>[]>('/api/accounts', fetcher)
   const { data: settings, mutate: mutateSettings } = useSWR<AppSettings & { adminEmail?: string }>('/api/settings', fetcher)
-  const { data: copilotUsage, mutate: mutateCopilotUsage } = useSWR<{ today: { requests: number; promptTokens: number; completionTokens: number; totalTokens: number } }>('/api/copilot/usage', fetcher, { refreshInterval: 30000 })
+  const { data: copilotUsage, mutate: mutateCopilotUsage } = useSWR<CopilotUsageData>('/api/copilot/usage', fetcher, { refreshInterval: 30000 })
   const [localSettings, setLocalSettings] = useState<Partial<AppSettings>>({})
 
   const merged = { ...settings, ...localSettings }
   const setS = (k: string, v: string | number | boolean) => setLocalSettings(prev => ({ ...prev, [k]: v }))
   const retiredGroqModel = merged.aiProvider === 'groq' && GROQ_RETIRED_MODELS.has(merged.aiModel || '')
+  const todayModelUsage = Object.entries(copilotUsage?.today.models ?? {})
+    .sort(([, a], [, b]) => b.totalTokens - a.totalTokens)
+  const last7DaysModelUsage = [...(copilotUsage?.last7Days ?? [])].reverse().flatMap(day =>
+    Object.entries(day.models ?? {})
+      .filter(([, usage]) => usage.requests > 0)
+      .map(([model, usage]) => ({ date: day.date, model, ...usage })),
+  )
 
   async function testNotification(channel: 'slackWebhookUrl' | 'teamsWebhookUrl' | 'customWebhookUrl') {
     const url = String(merged[channel] || '').trim()
@@ -638,6 +651,28 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-600">Total tokens today</span>
                     <span className="font-mono text-slate-400">{copilotUsage.today.totalTokens.toLocaleString()}</span>
+                  </div>
+                  <div className="border-t border-slate-800 pt-2 space-y-2">
+                    <div className="text-[11px] font-medium text-slate-500">By model today</div>
+                    {todayModelUsage.length > 0
+                      ? <div className="space-y-1.5">
+                          {todayModelUsage.map(([model, usage]) => <div key={model} className="flex items-center justify-between gap-3 text-[11px]">
+                            <span className="min-w-0 truncate font-mono text-slate-400" title={model}>{model}</span>
+                            <span className="shrink-0 text-slate-500">{usage.requests} req · {usage.totalTokens.toLocaleString()} tokens</span>
+                          </div>)}
+                        </div>
+                      : <div className="text-[11px] text-slate-600">Model-level tracking starts with new Copilot responses.</div>}
+                  </div>
+                  <div className="border-t border-slate-800 pt-2 space-y-2">
+                    <div className="text-[11px] font-medium text-slate-500">Last 7 days by model</div>
+                    {last7DaysModelUsage.length > 0
+                      ? <div className="max-h-40 overflow-y-auto space-y-1.5">
+                          {last7DaysModelUsage.map(({ date, model, requests, totalTokens }) => <div key={`${date}-${model}`} className="flex items-center justify-between gap-3 text-[11px]">
+                            <span className="min-w-0 truncate text-slate-500" title={`${date} · ${model}`}>{date} · <span className="font-mono text-slate-400">{model}</span></span>
+                            <span className="shrink-0 text-slate-500">{requests} req · {totalTokens.toLocaleString()} tokens</span>
+                          </div>)}
+                        </div>
+                      : <div className="text-[11px] text-slate-600">No model-level usage recorded in the last 7 days.</div>}
                   </div>
                 </div>
               : null}

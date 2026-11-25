@@ -97,11 +97,17 @@ async function testModel(provider: Provider, apiKey: string, model: string, base
   const response = await fetch(`${root}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
-    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: TEST_MAX_OUTPUT_TOKENS, temperature: 0 }),
+    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }],     max_tokens: TEST_MAX_OUTPUT_TOKENS, temperature: 0, stream: false }),
     signal: AbortSignal.timeout(15000),
   })
   const data = await readResponse(response)
-  if (!data.choices?.[0]?.message?.content) throw new Error('Model returned an empty response')
+  const choice = data.choices?.[0]
+  if (!choice?.message?.content?.trim()) {
+    const detail = choice
+      ? `finish reason: ${choice.finish_reason ?? 'unknown'}`
+      : `no choices in response: ${JSON.stringify(data).slice(0, 200)}`
+    throw new Error(`Model returned an empty response (${detail})`)
+  }
   return data.model || model
 }
 
@@ -112,11 +118,33 @@ type TestResponse = {
   modelVersion?: string
   content?: Array<{ type?: string; text?: string }>
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-  choices?: Array<{ message?: { content?: string } }>
+  choices?: Array<{ message?: { content?: string }; finish_reason?: string }>
+}
+
+// Some OpenAI-compatible gateways stream SSE chunks regardless of the stream flag.
+function parseSse(text: string): TestResponse {
+  let model: string | undefined
+  let content = ''
+  let finish_reason: string | undefined
+  for (const line of text.split('\n')) {
+    const payload = line.replace(/^data:\s*/, '').trim()
+    if (!line.startsWith('data:') || !payload || payload === '[DONE]') continue
+    const chunk = JSON.parse(payload) as { model?: string; choices?: Array<{ delta?: { content?: string }; finish_reason?: string }> }
+    model = chunk.model ?? model
+    content += chunk.choices?.[0]?.delta?.content ?? ''
+    finish_reason = chunk.choices?.[0]?.finish_reason ?? finish_reason
+  }
+  return { model, choices: [{ message: { content }, finish_reason }] }
 }
 
 async function readResponse(response: Response): Promise<TestResponse> {
-  const data = await response.json().catch(() => ({})) as TestResponse
+  const text = await response.text()
+  let data: TestResponse
+  try {
+    data = text.trimStart().startsWith('data:') ? parseSse(text) : JSON.parse(text) as TestResponse
+  } catch {
+    throw new Error(`Provider returned non-JSON (HTTP ${response.status}) from ${response.url}: ${text.slice(0, 150).replace(/\s+/g, ' ')}`)
+  }
   if (!response.ok) throw new Error(data.error?.message || data.message || `Provider returned HTTP ${response.status}`)
   return data
 }

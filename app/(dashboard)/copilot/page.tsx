@@ -33,9 +33,19 @@ function loadHistory(): Message[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return [WELCOME]
-    const parsed = JSON.parse(raw) as Message[]
-    return parsed.length > 0 ? parsed : [WELCOME]
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return [WELCOME]
+    const valid = parsed.filter(isMessage)
+    return valid.length > 0 ? valid : [WELCOME]
   } catch { return [WELCOME] }
+}
+
+function isMessage(value: unknown): value is Message {
+  if (!value || typeof value !== 'object') return false
+  const message = value as Record<string, unknown>
+  return (message.role === 'user' || message.role === 'assistant')
+    && typeof message.content === 'string'
+    && message.content.trim().length > 0
 }
 
 function saveHistory(msgs: Message[]) {
